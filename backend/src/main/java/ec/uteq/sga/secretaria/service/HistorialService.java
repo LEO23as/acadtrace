@@ -1,0 +1,137 @@
+package ec.uteq.sga.secretaria.service;
+
+import ec.uteq.sga.secretaria.common.ApiException;
+import ec.uteq.sga.secretaria.common.jdbc.GenericRowMapper;
+import ec.uteq.sga.secretaria.dto.PromocionRequest;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+@Service
+public class HistorialService {
+
+    private final NamedParameterJdbcTemplate jdbc;
+
+    public HistorialService(NamedParameterJdbcTemplate jdbc) {
+        this.jdbc = jdbc;
+    }
+
+    public Map<String, Object> historialEstudiante(long idEstudiante) {
+        List<Map<String, Object>> est = jdbc.query(
+                "SELECT id_estudiante, nombres, apellidos, cedula, codigo_estudiante " +
+                        "FROM sga_principal.estudiantes WHERE id_estudiante = :id",
+                new MapSqlParameterSource("id", idEstudiante), GenericRowMapper.INSTANCE);
+        if (est.isEmpty()) throw ApiException.notFound("Estudiante no encontrado");
+
+        String sql = """
+                SELECT hp.id_historial, hp.resultado, hp.promedio_anual, hp.observaciones,
+                       hp.fecha_registro,
+                       al.nombre AS ano_lectivo, al.fecha_inicio, al.fecha_fin,
+                       g.nombre AS grado,
+                       u.username AS registrado_por
+                FROM sga_principal.historial_promocion hp
+                JOIN sga_principal.anos_lectivos al ON al.id_ano_lectivo = hp.id_ano_lectivo
+                JOIN sga_principal.grados g ON g.id_grado = hp.id_grado_origen
+                LEFT JOIN sga_principal.usuarios u ON u.id_usuario = hp.registrado_por
+                WHERE hp.id_estudiante = :id
+                ORDER BY al.fecha_inicio DESC
+                """;
+        List<Map<String, Object>> historial = jdbc.query(
+                sql, new MapSqlParameterSource("id", idEstudiante), GenericRowMapper.INSTANCE);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("estudiante", est.get(0));
+        result.put("historial", historial);
+        return result;
+    }
+
+    @Transactional
+    public Map<String, Object> registrarPromocion(PromocionRequest dto, String username) {
+        List<Map<String, Object>> mat = jdbc.query(
+                "SELECT m.id_matricula, m.id_estudiante, m.id_grado, m.id_ano_lectivo " +
+                        "FROM sga_principal.matriculas m WHERE m.id_matricula = :id",
+                new MapSqlParameterSource("id", dto.id_matricula()), GenericRowMapper.INSTANCE);
+        if (mat.isEmpty()) throw ApiException.notFound("Matrícula no encontrada");
+        Map<String, Object> m = mat.get(0);
+
+        List<Long> dup = jdbc.query(
+                "SELECT id_historial FROM sga_principal.historial_promocion WHERE id_matricula = :id",
+                new MapSqlParameterSource("id", dto.id_matricula()), (rs, n) -> rs.getLong("id_historial"));
+        if (!dup.isEmpty()) throw ApiException.conflict("Ya existe registro de promoción para esta matrícula");
+
+        List<Long> userIds = jdbc.query(
+                "SELECT id_usuario FROM sga_principal.usuarios WHERE username = :username",
+                new MapSqlParameterSource("username", username), (rs, n) -> rs.getLong("id_usuario"));
+        Long registradoPor = userIds.isEmpty() ? null : userIds.get(0);
+
+        String observaciones = (dto.observaciones() == null || dto.observaciones().isBlank()) ? null : dto.observaciones();
+
+        // "resultado" nunca aparece con cast explicito en el SQL Node original (a diferencia de
+        // genero_t/estado_matricula_t), lo que indica que es una columna varchar/text simple, no un enum custom.
+        jdbc.update("""
+                INSERT INTO sga_principal.historial_promocion
+                  (id_matricula, id_estudiante, id_grado_origen, id_ano_lectivo,
+                   resultado, promedio_anual, observaciones, registrado_por)
+                VALUES (:idMatricula, :idEstudiante, :idGrado, :idAno, :resultado, :promedio, :observaciones, :registradoPor)
+                """,
+                new MapSqlParameterSource()
+                        .addValue("idMatricula", dto.id_matricula())
+                        .addValue("idEstudiante", m.get("id_estudiante"))
+                        .addValue("idGrado", m.get("id_grado"))
+                        .addValue("idAno", m.get("id_ano_lectivo"))
+                        .addValue("resultado", dto.resultado())
+                        .addValue("promedio", dto.promedio_anual())
+                        .addValue("observaciones", observaciones)
+                        .addValue("registradoPor", registradoPor));
+
+        String estadoMatricula = "PROMOVIDO".equals(dto.resultado()) ? "PROMOVIDA" : "NO_PROMOVIDA";
+        jdbc.update(
+                "UPDATE sga_principal.matriculas SET estado = :estado::sga_principal.estado_matricula_t " +
+                        "WHERE id_matricula = :id",
+                new MapSqlParameterSource().addValue("estado", estadoMatricula).addValue("id", dto.id_matricula()));
+
+        Number idEstudiante = (Number) m.get("id_estudiante");
+        return historialEstudiante(idEstudiante.longValue());
+    }
+
+    public List<Map<String, Object>> resumenPromocion(long idAnoLectivo) {
+        String sql = """
+                SELECT g.nombre AS grado,
+                       COUNT(*) FILTER (WHERE hp.resultado = 'PROMOVIDO') AS promovidos,
+                       COUNT(*) FILTER (WHERE hp.resultado = 'NO_PROMOVIDO') AS no_promovidos,
+                       COUNT(*) FILTER (WHERE hp.resultado = 'RETIRADO') AS retirados,
+                       ROUND(AVG(hp.promedio_anual)::numeric, 2) AS promedio_general,
+                       COUNT(hp.id_historial) AS total_registrados
+                FROM sga_principal.historial_promocion hp
+                JOIN sga_principal.grados g ON g.id_grado = hp.id_grado_origen
+                WHERE hp.id_ano_lectivo = :idAno
+                GROUP BY g.nombre, g.orden
+                ORDER BY g.orden
+                """;
+        return jdbc.query(sql, new MapSqlParameterSource("idAno", idAnoLectivo), GenericRowMapper.INSTANCE);
+    }
+
+    public List<Map<String, Object>> estudiantesSinPromocion(long idAnoLectivo) {
+        String sql = """
+                SELECT m.id_matricula, e.id_estudiante,
+                       e.nombres || ' ' || e.apellidos AS estudiante,
+                       e.cedula, g.nombre AS grado, p.letra AS paralelo
+                FROM sga_principal.matriculas m
+                JOIN sga_principal.estudiantes e ON e.id_estudiante = m.id_estudiante
+                JOIN sga_principal.grados g ON g.id_grado = m.id_grado
+                JOIN sga_principal.paralelos p ON p.id_paralelo = m.id_paralelo
+                WHERE m.id_ano_lectivo = :idAno
+                  AND NOT EXISTS (
+                    SELECT 1 FROM sga_principal.historial_promocion hp
+                    WHERE hp.id_matricula = m.id_matricula
+                  )
+                ORDER BY g.orden, p.letra, e.apellidos
+                """;
+        return jdbc.query(sql, new MapSqlParameterSource("idAno", idAnoLectivo), GenericRowMapper.INSTANCE);
+    }
+}

@@ -1,25 +1,27 @@
-# SGA Secretaría — Microservicio Unificado
+# SGA Secretaría — Backend Java + Frontend React
 
-Un solo proyecto que contiene el **backend Express** y el **frontend React** del panel de secretaría.
+Un proyecto que contiene el **backend Spring Boot** y el **frontend React** del panel de secretaría.
 
 ```
-sga-secretario/
-├── package.json          ← raíz: dependencias del servidor
-├── .env                  ← variables de entorno
-├── server/
-│   └── index.js          ← Express: API + sirve el frontend
-│   └── src/
-│       ├── config/       ← conexión a Supabase
-│       ├── middlewares/  ← JWT, validaciones, errores
-│       ├── modules/      ← estudiantes, matrículas, usuarios, historial, reportes
-│       └── utils/        ← generador de PDFs
+sga-secretaria/
+├── .env                        ← variables de entorno (no se commitea)
+├── backend/                    ← Spring Boot: API + sirve el frontend
+│   ├── pom.xml
+│   └── src/main/java/ec/uteq/sga/secretaria/
+│       ├── config/             ← DataSource, CORS, resource handler del SPA
+│       ├── security/           ← filtro JWT (mismo secret que sga-principal)
+│       ├── common/             ← manejo global de errores, paginación, RowMapper JDBC
+│       ├── controller/         ← todos los @RestController
+│       ├── service/            ← toda la lógica de negocio (SQL vía NamedParameterJdbcTemplate)
+│       ├── dto/                ← todos los DTOs de request
+│       └── pdf/                ← generador de reportes PDF (Apache PDFBox)
 └── client/
-    ├── package.json      ← dependencias del frontend
-    ├── vite.config.js    ← build + proxy dev
+    ├── package.json            ← dependencias del frontend
+    ├── vite.config.js          ← build + proxy dev
     └── src/
-        ├── pages/        ← Login, Dashboard, Estudiantes, Matrículas, etc.
-        ├── components/   ← Layout con sidebar
-        └── utils/        ← api.js con axios
+        ├── pages/               ← Login, Dashboard, Estudiantes, Matrículas, etc.
+        ├── components/          ← Layout con sidebar
+        └── utils/               ← api.js con axios
 ```
 
 ---
@@ -27,42 +29,42 @@ sga-secretario/
 ## Instalación y primer uso
 
 ```bash
-# 1. Instalar dependencias del servidor
-npm install
-
-# 2. Configurar variables de entorno
+# 1. Configurar variables de entorno
 cp .env.example .env
 # → Editar .env: DB_PASSWORD y demás valores
 
-# 3. Compilar el frontend (una sola vez, o cada vez que cambies el React)
-npm run build
+# 2. Compilar el frontend (una sola vez, o cada vez que cambies el React)
+cd client && npm install && npm run build && cd ..
 
-# 4. Iniciar el servidor unificado
-npm start
+# 3. Compilar y ejecutar el backend (desde la raíz del repo)
+mvn -f backend/pom.xml spring-boot:run
 ```
 
-Abre **http://localhost:3000** — verás el login del panel de secretaría.
+Abre **http://localhost:5176** — verás el login del panel de secretaría.
+
+> El backend usa el Maven Wrapper si no tenés Maven instalado: `./backend/mvnw -f backend/pom.xml spring-boot:run` (Linux/Mac) o `backend\mvnw.cmd -f backend\pom.xml spring-boot:run` (Windows).
 
 ---
 
 ## Modos de desarrollo
 
-### Opción A — Solo servidor (si ya tienes el build)
+### Opción A — Solo backend (si ya tenés el build del frontend)
 ```bash
-npm run dev:server     # node --watch server/index.js en :3000
+mvn -f backend/pom.xml spring-boot:run
 ```
+Con `spring-boot-devtools` en el classpath, el backend se reinicia solo al recompilar (`mvn -f backend/pom.xml compile`).
 
 ### Opción B — Desarrollo activo del frontend (hot reload)
 ```bash
-# Terminal 1: servidor Express
-npm run dev:server
+# Terminal 1: backend Spring Boot
+mvn -f backend/pom.xml spring-boot:run
 
-# Terminal 2: Vite dev con proxy automático → :3000
-npm run dev:client
-# Abre http://localhost:5173
+# Terminal 2: Vite dev con proxy automático → :5176
+cd client && npm run dev
+# Abre http://localhost:5174
 ```
 
-El `vite.config.js` tiene configurado el proxy: todas las peticiones `/api/*` desde `:5173` se redirigen a `:3000`.
+El `vite.config.js` tiene configurado el proxy: todas las peticiones `/api/*` desde el puerto de Vite se redirigen al backend.
 
 ---
 
@@ -70,21 +72,24 @@ El `vite.config.js` tiene configurado el proxy: todas las peticiones `/api/*` de
 
 | Variable | Descripción | Ejemplo |
 |---|---|---|
-| `PORT` | Puerto del servidor | `3000` |
-| `DB_HOST` | Host Supabase | `aws-0-us-east-1.pooler.supabase.com` |
+| `PORT` | Puerto del servidor | `5176` |
+| `DB_HOST` | Host Supabase | `aws-1-us-east-1.pooler.supabase.com` |
 | `DB_PORT` | Puerto PostgreSQL | `5432` |
 | `DB_NAME` | Nombre base de datos | `postgres` |
 | `DB_USER` | Usuario Supabase | `postgres.xxxxx` |
 | `DB_PASSWORD` | Contraseña | `tu_password` |
 | `DB_SSL` | SSL activado | `true` |
 | `JWT_SECRET` | **Misma secret que sga-principal** | `sga-provincias-unidas-...` |
-| `VITE_API_PRINCIPAL` | URL del Spring Boot (solo dev) | `http://localhost:8080/api` |
+| `VITE_API_PRINCIPAL` | URL del Spring Boot de login (solo dev, la usa el frontend) | `http://localhost:8080/api` |
+| `INST_NOMBRE` / `INST_CIUDAD` | Encabezados institucionales de los PDFs | — |
+| `CORS_ORIGIN` *(opcional)* | Origen permitido, default `*` | — |
+| `FRONTEND_DIST_PATH` *(opcional)* | Carpeta del build del frontend, default `client/dist` | — |
 
 ---
 
 ## API disponible
 
-Todas las rutas requieren `Authorization: Bearer <token>`.
+Todas las rutas requieren `Authorization: Bearer <token>` y el rol `ROLE_SECRETARIO` o `ROLE_ADMIN` en el JWT (verificado de verdad, no solo la presencia del token).
 
 | Módulo | Base URL |
 |---|---|
@@ -98,9 +103,9 @@ Todas las rutas requieren `Authorization: Bearer <token>`.
 
 ## Cómo funciona la unificación
 
-En **producción** (`npm start`):
-1. `npm run build` compila React → `client/dist/`
-2. Express sirve `client/dist/` como archivos estáticos en `/`
+En producción:
+1. `npm run build` (dentro de `client/`) compila React → `client/dist/`
+2. Spring Boot sirve `client/dist/` como archivos estáticos en `/`, leído directamente del disco (no se copia al `.jar`, así no hace falta recompilar el backend cuando cambia el frontend)
 3. Las rutas `/api/*` van al backend
 4. Cualquier otra ruta devuelve `index.html` (SPA routing de React Router)
 
