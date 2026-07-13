@@ -17,10 +17,14 @@ import java.util.Set;
  * Autentica + autoriza en un solo paso para /api/secretario/*.
  * Equivale a authMiddleware + requireRole(...) montados juntos en cada router Node,
  * con la diferencia de que aqui requireRole SI verifica el rol de verdad (en Node era un no-op).
+ *
+ * Los nombres de rol son los que emite sga-principal en el JWT (tabla
+ * sga_principal.roles: DIRECTOR, SECRETARIA, DOCENTE, SOPORTE_TECNICO), sin
+ * prefijo "ROLE_". DOCENTE y SOPORTE_TECNICO quedan fuera de este modulo.
  */
 public class JwtAuthFilter extends OncePerRequestFilter {
 
-    private static final Set<String> REQUIRED_ROLES = Set.of("ROLE_SECRETARIO", "ROLE_ADMIN");
+    private static final Set<String> REQUIRED_ROLES = Set.of("SECRETARIA", "DIRECTOR");
 
     private final JwtService jwtService;
     private final ObjectMapper objectMapper;

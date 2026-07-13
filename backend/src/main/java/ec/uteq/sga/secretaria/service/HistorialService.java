@@ -3,6 +3,10 @@ package ec.uteq.sga.secretaria.service;
 import ec.uteq.sga.secretaria.common.ApiException;
 import ec.uteq.sga.secretaria.common.jdbc.GenericRowMapper;
 import ec.uteq.sga.secretaria.dto.PromocionRequest;
+import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -15,10 +19,32 @@ import java.util.Map;
 @Service
 public class HistorialService {
 
-    private final NamedParameterJdbcTemplate jdbc;
+    private static final Logger log = LoggerFactory.getLogger(HistorialService.class);
 
-    public HistorialService(NamedParameterJdbcTemplate jdbc) {
+    private final NamedParameterJdbcTemplate jdbc;
+    private final LamportClock lamportClock;
+
+    public HistorialService(NamedParameterJdbcTemplate jdbc, LamportClock lamportClock) {
         this.jdbc = jdbc;
+        this.lamportClock = lamportClock;
+    }
+
+    /**
+     * Arranca el reloj logico desde el mayor lamport_ts ya persistido, para no
+     * repetir valores tras un reinicio del servicio. Si la columna todavia no
+     * existe (falta correr db/migrations/002_lamport_clock.sql) arranca en 0
+     * en vez de tumbar el boot del servicio.
+     */
+    @PostConstruct
+    void seedLamportClock() {
+        try {
+            Long max = jdbc.getJdbcTemplate().queryForObject(
+                    "SELECT COALESCE(MAX(lamport_ts), 0) FROM sga_principal.historial_promocion", Long.class);
+            lamportClock.seed(max == null ? 0 : max);
+        } catch (DataAccessException e) {
+            log.warn("No se pudo leer lamport_ts (¿falta correr db/migrations/002_lamport_clock.sql?). " +
+                    "El reloj logico arranca en 0.", e);
+        }
     }
 
     public Map<String, Object> historialEstudiante(long idEstudiante) {
@@ -73,13 +99,16 @@ public class HistorialService {
 
         // "resultado" nunca aparece con cast explicito en el SQL Node original (a diferencia de
         // genero_t/estado_matricula_t), lo que indica que es una columna varchar/text simple, no un enum custom.
+        // lamport_ts: orden causal del evento, ver LamportClock e independiente de fecha_registro (reloj de pared).
+        long lamportTs = lamportClock.tick();
         jdbc.update("""
                 INSERT INTO sga_principal.historial_promocion
                   (id_matricula, id_estudiante, id_grado_origen, id_ano_lectivo,
-                   resultado, promedio_anual, observaciones, registrado_por)
-                VALUES (:idMatricula, :idEstudiante, :idGrado, :idAno, :resultado, :promedio, :observaciones, :registradoPor)
+                   resultado, promedio_anual, observaciones, registrado_por, lamport_ts)
+                VALUES (:idMatricula, :idEstudiante, :idGrado, :idAno, :resultado, :promedio, :observaciones, :registradoPor, :lamportTs)
                 """,
                 new MapSqlParameterSource()
+                        .addValue("lamportTs", lamportTs)
                         .addValue("idMatricula", dto.id_matricula())
                         .addValue("idEstudiante", m.get("id_estudiante"))
                         .addValue("idGrado", m.get("id_grado"))

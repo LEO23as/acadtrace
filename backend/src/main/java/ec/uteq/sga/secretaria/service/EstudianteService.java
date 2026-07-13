@@ -4,6 +4,9 @@ import ec.uteq.sga.secretaria.common.ApiException;
 import ec.uteq.sga.secretaria.common.PageResult;
 import ec.uteq.sga.secretaria.common.jdbc.GenericRowMapper;
 import ec.uteq.sga.secretaria.dto.EstudianteRequest;
+import ec.uteq.sga.secretaria.security.CryptoService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -15,10 +18,71 @@ import java.util.Map;
 @Service
 public class EstudianteService {
 
-    private final NamedParameterJdbcTemplate jdbc;
+    private static final Logger log = LoggerFactory.getLogger(EstudianteService.class);
 
-    public EstudianteService(NamedParameterJdbcTemplate jdbc) {
+    /**
+     * Columnas cifradas con AES-256-GCM (CryptoService). Secretaria es la unica
+     * escritora de estos campos en sga_principal.estudiantes; cedula y correo
+     * quedan en claro porque se usan en busquedas/uniqueness (ILIKE, WHERE =).
+     * No incluye campos de sga_principal.representantes: esa tabla la escribe
+     * otro servicio y aqui solo se lee por JOIN.
+     */
+    private static final List<String> CAMPOS_CIFRADOS = List.of("direccion", "telefono", "tipo_discapacidad");
+
+    private final NamedParameterJdbcTemplate jdbc;
+    private final CryptoService crypto;
+
+    public EstudianteService(NamedParameterJdbcTemplate jdbc, CryptoService crypto) {
         this.jdbc = jdbc;
+        this.crypto = crypto;
+    }
+
+    /**
+     * Descifra los campos sensibles de una fila. Tolera valores en texto plano
+     * (estudiantes existentes de antes de activar el cifrado, o filas
+     * escritas por sga-principal, que hoy no cifra) devolviendolos tal cual en
+     * vez de fallar, para no romper la lectura de datos historicos.
+     */
+    private Map<String, Object> descifrarFila(Map<String, Object> row) {
+        for (String campo : CAMPOS_CIFRADOS) {
+            if (row.containsKey(campo)) {
+                String valor = (String) row.get(campo);
+                if (valor != null) {
+                    try {
+                        row.put(campo, crypto.decrypt(valor));
+                    } catch (RuntimeException e) {
+                        log.warn("No se pudo descifrar '{}' (probable dato en texto plano previo al cifrado); " +
+                                "se devuelve sin cambios", campo);
+                    }
+                }
+            }
+        }
+        return row;
+    }
+
+    /**
+     * estudiantes.estado es varchar en la base ('ACTIVO'/'ACTIVA', con datos
+     * legados inconsistentes en genero), no boolean como asumia el codigo
+     * original. Se normaliza a boolean en la respuesta para no romper el
+     * contrato con el frontend (Usuarios.jsx y Estudiantes.jsx ya esperan
+     * estado true/false).
+     */
+    private Map<String, Object> normalizarEstado(Map<String, Object> row) {
+        if (row.containsKey("estado")) {
+            row.put("estado", esActivo(row.get("estado")));
+        }
+        return row;
+    }
+
+    private static boolean esActivo(Object estado) {
+        if (estado instanceof Boolean b) return b;
+        if (estado == null) return false;
+        String texto = estado.toString().trim().toUpperCase();
+        return texto.equals("ACTIVO") || texto.equals("ACTIVA");
+    }
+
+    private Map<String, Object> posprocesar(Map<String, Object> row) {
+        return descifrarFila(normalizarEstado(row));
     }
 
     public PageResult<Map<String, Object>> listarTodos(String search, int page, int limit) {
@@ -31,7 +95,8 @@ public class EstudianteService {
                     "OR e.cedula ILIKE :like OR e.codigo_estudiante ILIKE :like)";
         }
 
-        String countSql = "SELECT COUNT(*) FROM sga_principal.estudiantes e WHERE e.estado = true" + whereExtra;
+        String countSql = "SELECT COUNT(*) FROM sga_principal.estudiantes e " +
+                "WHERE UPPER(e.estado) IN ('ACTIVO','ACTIVA')" + whereExtra;
         Long total = jdbc.queryForObject(countSql, params, Long.class);
 
         params.addValue("limit", limit);
@@ -46,11 +111,12 @@ public class EstudianteService {
                        r.parentesco
                 FROM sga_principal.estudiantes e
                 LEFT JOIN sga_principal.representantes r ON r.id_representante = e.id_representante
-                WHERE e.estado = true%s
+                WHERE UPPER(e.estado) IN ('ACTIVO','ACTIVA')%s
                 ORDER BY e.apellidos, e.nombres
                 LIMIT :limit OFFSET :offset
                 """.formatted(whereExtra);
         List<Map<String, Object>> data = jdbc.query(sql, params, GenericRowMapper.INSTANCE);
+        data.forEach(this::posprocesar);
 
         return PageResult.of(data, total == null ? 0 : total, page, limit);
     }
@@ -74,7 +140,7 @@ public class EstudianteService {
                 """;
         List<Map<String, Object>> rows = jdbc.query(sql, new MapSqlParameterSource("id", id), GenericRowMapper.INSTANCE);
         if (rows.isEmpty()) throw ApiException.notFound("Estudiante no encontrado");
-        return rows.get(0);
+        return posprocesar(rows.get(0));
     }
 
     public Map<String, Object> crear(EstudianteRequest dto, String username) {
@@ -117,11 +183,11 @@ public class EstudianteService {
                 .addValue("apellidos", dto.apellidos())
                 .addValue("fecha_nacimiento", parseDate(dto.fecha_nacimiento()))
                 .addValue("genero", blankToNull(dto.genero()))
-                .addValue("direccion", blankToNull(dto.direccion()))
-                .addValue("telefono", blankToNull(dto.telefono()))
+                .addValue("direccion", crypto.encrypt(blankToNull(dto.direccion())))
+                .addValue("telefono", crypto.encrypt(blankToNull(dto.telefono())))
                 .addValue("correo", blankToNull(dto.correo()))
                 .addValue("discapacidad", dto.discapacidad() != null && dto.discapacidad())
-                .addValue("tipo_discapacidad", blankToNull(dto.tipo_discapacidad()))
+                .addValue("tipo_discapacidad", crypto.encrypt(blankToNull(dto.tipo_discapacidad())))
                 .addValue("porcentaje_disc", dto.porcentaje_disc())
                 .addValue("id_representante", dto.id_representante())
                 .addValue("creado_por", creadoPor);
@@ -135,10 +201,10 @@ public class EstudianteService {
                    tipo_discapacidad, porcentaje_disc, id_representante, creado_por, estado)
                 VALUES (:cedula, :codigo, :nombres, :apellidos, :fecha_nacimiento,
                         :genero::sga_principal.genero_t, :direccion, :telefono, :correo, :discapacidad,
-                        :tipo_discapacidad, :porcentaje_disc, :id_representante, :creado_por, true)
+                        :tipo_discapacidad, :porcentaje_disc, :id_representante, :creado_por, 'ACTIVO')
                 RETURNING *
                 """;
-        return jdbc.query(insertSql, params, GenericRowMapper.INSTANCE).get(0);
+        return posprocesar(jdbc.query(insertSql, params, GenericRowMapper.INSTANCE).get(0));
     }
 
     public Map<String, Object> actualizar(long id, EstudianteRequest dto) {
@@ -150,11 +216,11 @@ public class EstudianteService {
                 .addValue("apellidos", blankToNull(dto.apellidos()))
                 .addValue("fecha_nacimiento", parseDate(dto.fecha_nacimiento()))
                 .addValue("genero", blankToNull(dto.genero()))
-                .addValue("direccion", blankToNull(dto.direccion()))
-                .addValue("telefono", blankToNull(dto.telefono()))
+                .addValue("direccion", crypto.encrypt(blankToNull(dto.direccion())))
+                .addValue("telefono", crypto.encrypt(blankToNull(dto.telefono())))
                 .addValue("correo", blankToNull(dto.correo()))
                 .addValue("discapacidad", dto.discapacidad())
-                .addValue("tipo_discapacidad", blankToNull(dto.tipo_discapacidad()))
+                .addValue("tipo_discapacidad", crypto.encrypt(blankToNull(dto.tipo_discapacidad())))
                 .addValue("porcentaje_disc", dto.porcentaje_disc())
                 .addValue("id_representante", dto.id_representante())
                 .addValue("id", id);
@@ -177,7 +243,7 @@ public class EstudianteService {
                 WHERE id_estudiante = :id
                 RETURNING *
                 """;
-        return jdbc.query(sql, params, GenericRowMapper.INSTANCE).get(0);
+        return posprocesar(jdbc.query(sql, params, GenericRowMapper.INSTANCE).get(0));
     }
 
     public void cambiarEstado(long id, boolean estado) {
@@ -185,7 +251,7 @@ public class EstudianteService {
         jdbc.update(
                 "UPDATE sga_principal.estudiantes SET estado = :estado, fecha_actualizacion = NOW() " +
                         "WHERE id_estudiante = :id",
-                new MapSqlParameterSource().addValue("estado", estado).addValue("id", id));
+                new MapSqlParameterSource().addValue("estado", estado ? "ACTIVO" : "INACTIVO").addValue("id", id));
     }
 
     private static String blankToNull(String value) {
