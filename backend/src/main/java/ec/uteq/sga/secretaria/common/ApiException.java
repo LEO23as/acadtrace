@@ -31,4 +31,8 @@ public class ApiException extends RuntimeException {
     public static ApiException badRequest(String message) {
         return new ApiException(400, message);
     }
+
+    public static ApiException badGateway(String message) {
+        return new ApiException(502, message);
+    }
 }

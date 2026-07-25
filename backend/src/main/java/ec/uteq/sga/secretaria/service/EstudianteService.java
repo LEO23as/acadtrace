@@ -21,13 +21,16 @@ public class EstudianteService {
     private static final Logger log = LoggerFactory.getLogger(EstudianteService.class);
 
     /**
-     * Columnas cifradas con AES-256-GCM (CryptoService). Secretaria es la unica
-     * escritora de estos campos en sga_principal.estudiantes; cedula y correo
-     * quedan en claro porque se usan en busquedas/uniqueness (ILIKE, WHERE =).
-     * No incluye campos de sga_principal.representantes: esa tabla la escribe
-     * otro servicio y aqui solo se lee por JOIN.
+     * Columnas cifradas con AES-256-GCM (CryptoService): las propias de
+     * estudiantes (direccion/telefono/tipo_discapacidad) mas los alias de las
+     * columnas ya cifradas por RepresentanteService (rep_telefono) y
+     * FichaEstudianteService (detalle_enfermedad, medicacion_permanente,
+     * alergias) que este servicio solo lee por JOIN. cedula y correo quedan
+     * en claro porque se usan en busquedas/uniqueness (ILIKE, WHERE =).
      */
-    private static final List<String> CAMPOS_CIFRADOS = List.of("direccion", "telefono", "tipo_discapacidad");
+    private static final List<String> CAMPOS_CIFRADOS = List.of(
+            "direccion", "telefono", "tipo_discapacidad",
+            "rep_telefono", "detalle_enfermedad", "medicacion_permanente", "alergias");
 
     private final NamedParameterJdbcTemplate jdbc;
     private final CryptoService crypto;
@@ -95,7 +98,7 @@ public class EstudianteService {
                     "OR e.cedula ILIKE :like OR e.codigo_estudiante ILIKE :like)";
         }
 
-        String countSql = "SELECT COUNT(*) FROM sga_principal.estudiantes e " +
+        String countSql = "SELECT COUNT(*) FROM sga_secretaria.estudiantes e " +
                 "WHERE UPPER(e.estado) IN ('ACTIVO','ACTIVA')" + whereExtra;
         Long total = jdbc.queryForObject(countSql, params, Long.class);
 
@@ -109,8 +112,8 @@ public class EstudianteService {
                        r.apellidos AS rep_apellidos,
                        r.telefono_principal AS rep_telefono,
                        r.parentesco
-                FROM sga_principal.estudiantes e
-                LEFT JOIN sga_principal.representantes r ON r.id_representante = e.id_representante
+                FROM sga_secretaria.estudiantes e
+                LEFT JOIN sga_secretaria.representantes r ON r.id_representante = e.id_representante
                 WHERE UPPER(e.estado) IN ('ACTIVO','ACTIVA')%s
                 ORDER BY e.apellidos, e.nombres
                 LIMIT :limit OFFSET :offset
@@ -133,9 +136,9 @@ public class EstudianteService {
                        f.tipo_sangre, f.alergias, f.medicacion_permanente,
                        f.enfermedad_catastrofica, f.detalle_enfermedad,
                        f.contacto_emergencia, f.telefono_emergencia
-                FROM sga_principal.estudiantes e
-                LEFT JOIN sga_principal.representantes r ON r.id_representante = e.id_representante
-                LEFT JOIN sga_principal.fichas_estudiante f ON f.id_estudiante = e.id_estudiante
+                FROM sga_secretaria.estudiantes e
+                LEFT JOIN sga_secretaria.representantes r ON r.id_representante = e.id_representante
+                LEFT JOIN sga_secretaria.fichas_estudiante f ON f.id_estudiante = e.id_estudiante
                 WHERE e.id_estudiante = :id
                 """;
         List<Map<String, Object>> rows = jdbc.query(sql, new MapSqlParameterSource("id", id), GenericRowMapper.INSTANCE);
@@ -147,7 +150,7 @@ public class EstudianteService {
         String cedula = blankToNull(dto.cedula());
         if (cedula != null) {
             List<Map<String, Object>> dup = jdbc.query(
-                    "SELECT id_estudiante FROM sga_principal.estudiantes WHERE cedula = :cedula",
+                    "SELECT id_estudiante FROM sga_secretaria.estudiantes WHERE cedula = :cedula",
                     new MapSqlParameterSource("cedula", cedula), GenericRowMapper.INSTANCE);
             if (!dup.isEmpty()) throw ApiException.conflict("Ya existe un estudiante con esa cédula");
         }
@@ -159,7 +162,7 @@ public class EstudianteService {
         Long creadoPor = creadorIds.isEmpty() ? null : creadorIds.get(0);
 
         List<String> ultimoCodigo = jdbc.query(
-                "SELECT codigo_estudiante FROM sga_principal.estudiantes " +
+                "SELECT codigo_estudiante FROM sga_secretaria.estudiantes " +
                         "WHERE codigo_estudiante IS NOT NULL ORDER BY id_estudiante DESC LIMIT 1",
                 (rs, n) -> rs.getString("codigo_estudiante"));
         String codigo = "EST-0001";
@@ -195,7 +198,7 @@ public class EstudianteService {
         // Nota: se agrega ::sga_principal.genero_t (ausente en el SQL Node original) porque
         // PgJDBC es mas estricto que el driver pg de Node con tipos custom en INSERT.
         String insertSql = """
-                INSERT INTO sga_principal.estudiantes
+                INSERT INTO sga_secretaria.estudiantes
                   (cedula, codigo_estudiante, nombres, apellidos, fecha_nacimiento,
                    genero, direccion, telefono, correo, discapacidad,
                    tipo_discapacidad, porcentaje_disc, id_representante, creado_por, estado)
@@ -226,7 +229,7 @@ public class EstudianteService {
                 .addValue("id", id);
 
         String sql = """
-                UPDATE sga_principal.estudiantes SET
+                UPDATE sga_secretaria.estudiantes SET
                   cedula             = COALESCE(:cedula, cedula),
                   nombres            = COALESCE(:nombres, nombres),
                   apellidos          = COALESCE(:apellidos, apellidos),
@@ -249,7 +252,7 @@ public class EstudianteService {
     public void cambiarEstado(long id, boolean estado) {
         obtenerPorId(id);
         jdbc.update(
-                "UPDATE sga_principal.estudiantes SET estado = :estado, fecha_actualizacion = NOW() " +
+                "UPDATE sga_secretaria.estudiantes SET estado = :estado, fecha_actualizacion = NOW() " +
                         "WHERE id_estudiante = :id",
                 new MapSqlParameterSource().addValue("estado", estado ? "ACTIVO" : "INACTIVO").addValue("id", id));
     }
