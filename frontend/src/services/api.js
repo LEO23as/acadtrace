@@ -64,6 +64,19 @@ export const registrarAsistenciaGrupal = (data) =>
 export const actualizarAsistencia = (id, data) =>
   axios.put(`${API}/docente/asistencias/${id}`, data, { headers: authHeaders() });
 
+// ─── CALIFICACIONES (Java → gRPC → Django) ───────────────────
+export const getCalificaciones = (idMatricula, trimestre) =>
+  axios.get(`${API}/rpc/calificaciones/${idMatricula}/${trimestre}`, { headers: authHeaders() });
+
+export const registrarCalificacion = (data) =>
+  axios.post(`${API}/rpc/calificaciones/registrar`, data, { headers: authHeaders() });
+
+export const getPromedioFormativo = (idMatricula, trimestre) =>
+  axios.get(`${API}/rpc/calificaciones/promedio-formativo/${idMatricula}/${trimestre}`, { headers: authHeaders() });
+
+export const getPromedioFinal = (idMatricula, trimestre) =>
+  axios.get(`${API}/rpc/calificaciones/promedio-final/${idMatricula}/${trimestre}`, { headers: authHeaders() });
+
 // ─── PERÍODOS DE EVALUACIÓN (aún solo REST en Django) ────────
 // TODO: exponer como endpoint en el gateway Java cuando exista.
 export const getPeriodos = () =>
