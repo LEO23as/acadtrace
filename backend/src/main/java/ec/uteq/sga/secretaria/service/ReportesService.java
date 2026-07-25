@@ -20,13 +20,15 @@ public class ReportesService {
     private final NamedParameterJdbcTemplate jdbc;
     private final EstudianteService estudianteService;
     private final MatriculaService matriculaService;
+    private final CatalogoService catalogo;
     private final PdfTheme theme;
 
     public ReportesService(NamedParameterJdbcTemplate jdbc, EstudianteService estudianteService,
-                            MatriculaService matriculaService, PdfTheme theme) {
+                            MatriculaService matriculaService, CatalogoService catalogo, PdfTheme theme) {
         this.jdbc = jdbc;
         this.estudianteService = estudianteService;
         this.matriculaService = matriculaService;
+        this.catalogo = catalogo;
         this.theme = theme;
     }
 
@@ -54,36 +56,34 @@ public class ReportesService {
 
         String sql = """
                 SELECT m.numero_orden, m.fecha_registro, m.estado,
-                       e.cedula, e.nombres || ' ' || e.apellidos AS estudiante,
-                       g.nombre AS grado, p.letra AS paralelo
-                FROM sga_principal.matriculas m
-                JOIN sga_principal.estudiantes e ON e.id_estudiante = m.id_estudiante
-                JOIN sga_principal.grados g ON g.id_grado = m.id_grado
-                JOIN sga_principal.paralelos p ON p.id_paralelo = m.id_paralelo
+                       e.cedula, e.nombres || ' ' || e.apellidos AS estudiante
+                FROM sga_secretaria.matriculas m
+                JOIN sga_secretaria.estudiantes e ON e.id_estudiante = m.id_estudiante
                 %s
-                ORDER BY g.orden, p.letra, e.apellidos
+                ORDER BY e.apellidos
                 """.formatted(where);
         List<Map<String, Object>> matriculas = jdbc.query(sql, params, GenericRowMapper.INSTANCE);
 
-        List<String> anoNombre = jdbc.query(
-                "SELECT nombre FROM sga_principal.anos_lectivos WHERE id_ano_lectivo = :idAno",
-                new MapSqlParameterSource("idAno", idAno), (rs, n) -> rs.getString("nombre"));
+        String anoNombre = catalogo.anosLectivos().stream()
+                .filter(a -> a.id() == idAno)
+                .findFirst().map(CatalogoService.AnoLectivo::nombre).orElse("");
 
         String gradoNombre = "";
         if (idGrado != null) {
-            List<String> rows = jdbc.query("SELECT nombre FROM sga_principal.grados WHERE id_grado = :id",
-                    new MapSqlParameterSource("id", idGrado), (rs, n) -> rs.getString("nombre"));
-            gradoNombre = rows.isEmpty() ? "" : rows.get(0);
+            long idGradoValue = idGrado;
+            gradoNombre = catalogo.grados().stream()
+                    .filter(g -> g.id() == idGradoValue)
+                    .findFirst().map(CatalogoService.Grado::nombre).orElse("");
         }
         String paraleloLetra = "";
         if (idParalelo != null) {
-            List<String> rows = jdbc.query("SELECT letra FROM sga_principal.paralelos WHERE id_paralelo = :id",
-                    new MapSqlParameterSource("id", idParalelo), (rs, n) -> rs.getString("letra"));
-            paraleloLetra = rows.isEmpty() ? "" : rows.get(0);
+            long idParaleloValue = idParalelo;
+            paraleloLetra = catalogo.paralelos(idGrado).stream()
+                    .filter(p -> p.id() == idParaleloValue)
+                    .findFirst().map(CatalogoService.Paralelo::letra).orElse("");
         }
 
-        return NominaMatriculasPdfBuilder.build(matriculas, anoNombre.isEmpty() ? "" : anoNombre.get(0),
-                gradoNombre, paraleloLetra, theme);
+        return NominaMatriculasPdfBuilder.build(matriculas, anoNombre, gradoNombre, paraleloLetra, theme);
     }
 
     public Map<String, Object> estadisticas(long idAno) {
@@ -96,25 +96,37 @@ public class ReportesService {
                        COUNT(*) FILTER (WHERE e.discapacidad = true) AS con_discapacidad,
                        COUNT(*) FILTER (WHERE e.genero = 'MASCULINO') AS masculino,
                        COUNT(*) FILTER (WHERE e.genero = 'FEMENINO') AS femenino
-                FROM sga_principal.matriculas m
-                JOIN sga_principal.estudiantes e ON e.id_estudiante = m.id_estudiante
+                FROM sga_secretaria.matriculas m
+                JOIN sga_secretaria.estudiantes e ON e.id_estudiante = m.id_estudiante
                 WHERE m.id_ano_lectivo = :idAno
                 """, params, GenericRowMapper.INSTANCE).get(0);
 
-        List<Map<String, Object>> porGrado = jdbc.query("""
-                SELECT g.nombre AS grado, g.orden,
-                       COUNT(m.id_matricula) AS total
-                FROM sga_principal.grados g
-                LEFT JOIN sga_principal.matriculas m
-                  ON m.id_grado = g.id_grado AND m.id_ano_lectivo = :idAno
-                WHERE g.activo = true
-                GROUP BY g.nombre, g.orden
-                ORDER BY g.orden
+        List<Map<String, Object>> conteosPorGrado = jdbc.query("""
+                SELECT id_grado, COUNT(*) AS total
+                FROM sga_secretaria.matriculas
+                WHERE id_ano_lectivo = :idAno
+                GROUP BY id_grado
                 """, params, GenericRowMapper.INSTANCE);
+        Map<Long, Long> totalPorGrado = new LinkedHashMap<>();
+        for (Map<String, Object> c : conteosPorGrado) {
+            totalPorGrado.put(((Number) c.get("id_grado")).longValue(), ((Number) c.get("total")).longValue());
+        }
+
+        List<Map<String, Object>> porGrado = catalogo.grados().stream()
+                .filter(CatalogoService.Grado::activo)
+                .sorted(java.util.Comparator.comparingInt(CatalogoService.Grado::orden))
+                .map(g -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("grado", g.nombre());
+                    row.put("orden", g.orden());
+                    row.put("total", totalPorGrado.getOrDefault(g.id(), 0L));
+                    return row;
+                })
+                .toList();
 
         List<Map<String, Object>> porEstado = jdbc.query("""
                 SELECT estado, COUNT(*) AS cantidad
-                FROM sga_principal.matriculas WHERE id_ano_lectivo = :idAno
+                FROM sga_secretaria.matriculas WHERE id_ano_lectivo = :idAno
                 GROUP BY estado
                 """, params, GenericRowMapper.INSTANCE);
 
