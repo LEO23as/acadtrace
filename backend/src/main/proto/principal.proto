@@ -6,10 +6,11 @@ option java_package = "ec.edu.uteq.sga.grpc.principal";
 option java_multiple_files = true;
 
 // Contrato expuesto por sga-principal para que otros microservicios
-// (Secretaría, Soporte, etc.) lean el catálogo institucional sin tocar la
-// base de datos directo. Estudiantes/matrículas/representantes ya no se
-// exponen aquí: esos datos son dominio exclusivo de sga-secretaria desde que
-// las tablas se movieron al esquema sga_secretaria.
+// (Secretaría, Soporte, etc.) lean el catálogo institucional (años
+// lectivos/grados/paralelos/asignaturas) sin tocar su base de datos
+// directo. Estudiantes/matrículas/representantes/fichas siguen viviendo en
+// sga_principal (tablas compartidas, sin mover) y Secretaría las sigue
+// leyendo/escribiendo por SQL directo, no por este servicio.
 service PrincipalService {
   rpc ListarAnosLectivos (Empty) returns (AnosLectivosResponse);
   rpc ListarGrados (Empty) returns (GradosResponse);

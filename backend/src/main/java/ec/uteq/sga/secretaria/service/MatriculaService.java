@@ -47,22 +47,23 @@ public class MatriculaService {
         }
 
         Long total = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM sga_secretaria.matriculas m " +
-                        "JOIN sga_secretaria.estudiantes e ON e.id_estudiante = m.id_estudiante " + where,
+                "SELECT COUNT(*) FROM sga_principal.matriculas m " +
+                        "JOIN sga_principal.estudiantes e ON e.id_estudiante = m.id_estudiante " + where,
                 params, Long.class);
 
         params.addValue("limit", limit).addValue("offset", offset);
-        // Orden por id_grado/id_paralelo (no por g.orden/p.letra: ese catalogo ya
-        // no vive en esta base, ver CatalogoService) - suficiente porque grados y
-        // paralelos normalmente se crean en el mismo orden en que se muestran.
+        // Orden por id_grado/id_paralelo (no por g.orden/p.letra: el catalogo se
+        // consume por gRPC, no por JOIN SQL, ver CatalogoService) - suficiente
+        // porque grados y paralelos normalmente se crean en el mismo orden en
+        // que se muestran.
         String sql = """
                 SELECT m.id_matricula, m.numero_orden, m.fecha_registro, m.estado, m.observaciones,
                        m.id_grado, m.id_paralelo, m.id_ano_lectivo,
                        e.id_estudiante, e.cedula, e.codigo_estudiante,
                        e.nombres || ' ' || e.apellidos AS estudiante,
                        u.username AS registrado_por
-                FROM sga_secretaria.matriculas m
-                JOIN sga_secretaria.estudiantes e ON e.id_estudiante = m.id_estudiante
+                FROM sga_principal.matriculas m
+                JOIN sga_principal.estudiantes e ON e.id_estudiante = m.id_estudiante
                 LEFT JOIN sga_principal.usuarios u ON u.id_usuario = m.registrado_por
                 %s
                 ORDER BY m.id_grado, m.id_paralelo, e.apellidos
@@ -80,7 +81,7 @@ public class MatriculaService {
                        COUNT(*) AS total,
                        COUNT(*) FILTER (WHERE estado = 'ACTIVA') AS activas,
                        COUNT(*) FILTER (WHERE estado = 'RETIRADA') AS retiradas
-                FROM sga_secretaria.matriculas
+                FROM sga_principal.matriculas
                 WHERE id_ano_lectivo = :idAno
                 GROUP BY id_grado, id_paralelo
                 """, new MapSqlParameterSource("idAno", idAnoLectivo), GenericRowMapper.INSTANCE);
@@ -120,8 +121,8 @@ public class MatriculaService {
                 SELECT m.id_matricula, m.numero_orden, m.fecha_registro, m.estado,
                        m.id_grado, m.id_paralelo, m.id_ano_lectivo,
                        hp.resultado AS resultado_promocion, hp.promedio_anual
-                FROM sga_secretaria.matriculas m
-                LEFT JOIN sga_secretaria.historial_promocion hp ON hp.id_matricula = m.id_matricula
+                FROM sga_principal.matriculas m
+                LEFT JOIN sga_principal.historial_promocion hp ON hp.id_matricula = m.id_matricula
                 WHERE m.id_estudiante = :id
                 """;
         List<Map<String, Object>> data = jdbc.query(sql, new MapSqlParameterSource("id", idEstudiante), GenericRowMapper.INSTANCE);
@@ -138,8 +139,8 @@ public class MatriculaService {
                        e.nombres || ' ' || e.apellidos AS estudiante,
                        e.cedula, e.codigo_estudiante,
                        u.username AS registrado_por
-                FROM sga_secretaria.matriculas m
-                JOIN sga_secretaria.estudiantes e ON e.id_estudiante = m.id_estudiante
+                FROM sga_principal.matriculas m
+                JOIN sga_principal.estudiantes e ON e.id_estudiante = m.id_estudiante
                 LEFT JOIN sga_principal.usuarios u ON u.id_usuario = m.registrado_por
                 WHERE m.id_matricula = :id
                 """;
@@ -155,7 +156,7 @@ public class MatriculaService {
                 .addValue("idEstudiante", dto.id_estudiante())
                 .addValue("idAno", dto.id_ano_lectivo());
         List<Long> dup = jdbc.query(
-                "SELECT id_matricula FROM sga_secretaria.matriculas WHERE id_estudiante = :idEstudiante AND id_ano_lectivo = :idAno",
+                "SELECT id_matricula FROM sga_principal.matriculas WHERE id_estudiante = :idEstudiante AND id_ano_lectivo = :idAno",
                 dupParams, (rs, n) -> rs.getLong("id_matricula"));
         if (!dup.isEmpty()) throw ApiException.conflict("El estudiante ya tiene matrícula en ese año lectivo");
 
@@ -165,7 +166,7 @@ public class MatriculaService {
         Long registradoPor = userIds.isEmpty() ? null : userIds.get(0);
 
         Integer maxOrden = jdbc.queryForObject(
-                "SELECT COALESCE(MAX(numero_orden), 0) FROM sga_secretaria.matriculas WHERE id_ano_lectivo = :idAno",
+                "SELECT COALESCE(MAX(numero_orden), 0) FROM sga_principal.matriculas WHERE id_ano_lectivo = :idAno",
                 new MapSqlParameterSource("idAno", dto.id_ano_lectivo()), Integer.class);
         int numeroOrden = (maxOrden == null ? 0 : maxOrden) + 1;
 
@@ -182,10 +183,9 @@ public class MatriculaService {
                 .addValue("observaciones", observaciones)
                 .addValue("registradoPor", registradoPor);
 
-        // ::sga_principal.estado_matricula_t agregado por estrictez de PgJDBC (ver nota en EstudianteService).
-        // El TIPO se queda en sga_principal (los tipos custom no se mueven con ALTER TABLE SET SCHEMA).
+        // ::sga_principal.estado_matricula_t agregado por estrictez de PgJDBC (ver nota en EstudianteService)
         String insertSql = """
-                INSERT INTO sga_secretaria.matriculas
+                INSERT INTO sga_principal.matriculas
                   (id_estudiante, id_grado, id_paralelo, id_ano_lectivo,
                    numero_orden, fecha_registro, estado, observaciones, registrado_por)
                 VALUES (:idEstudiante, :idGrado, :idParalelo, :idAno, :numeroOrden, CURRENT_DATE,
@@ -199,14 +199,14 @@ public class MatriculaService {
     public void cambiarEstado(long id, String estado) {
         obtenerPorId(id);
         jdbc.update(
-                "UPDATE sga_secretaria.matriculas SET estado = :estado::sga_principal.estado_matricula_t WHERE id_matricula = :id",
+                "UPDATE sga_principal.matriculas SET estado = :estado::sga_principal.estado_matricula_t WHERE id_matricula = :id",
                 new MapSqlParameterSource().addValue("estado", estado).addValue("id", id));
     }
 
     /**
      * Agrega grado/paralelo/ano_lectivo (nombre + letra) a cada fila usando el
-     * catalogo de sga-principal por gRPC, en vez del JOIN SQL que se usaba
-     * cuando esas tablas estaban en la misma base que matriculas.
+     * catalogo de sga-principal por gRPC en vez de un JOIN SQL directo, para
+     * no acoplar Secretaria a las tablas de catalogo de otro servicio.
      */
     private void enriquecerConCatalogo(List<Map<String, Object>> filas) {
         if (filas.isEmpty()) return;
