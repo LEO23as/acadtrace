@@ -42,7 +42,7 @@ public class HistorialService {
     void seedLamportClock() {
         try {
             Long max = jdbc.getJdbcTemplate().queryForObject(
-                    "SELECT COALESCE(MAX(lamport_ts), 0) FROM sga_secretaria.historial_promocion", Long.class);
+                    "SELECT COALESCE(MAX(lamport_ts), 0) FROM sga_principal.historial_promocion", Long.class);
             lamportClock.seed(max == null ? 0 : max);
         } catch (DataAccessException e) {
             log.warn("No se pudo leer lamport_ts (¿falta correr db/migrations/002_lamport_clock.sql?). " +
@@ -53,7 +53,7 @@ public class HistorialService {
     public Map<String, Object> historialEstudiante(long idEstudiante) {
         List<Map<String, Object>> est = jdbc.query(
                 "SELECT id_estudiante, nombres, apellidos, cedula, codigo_estudiante " +
-                        "FROM sga_secretaria.estudiantes WHERE id_estudiante = :id",
+                        "FROM sga_principal.estudiantes WHERE id_estudiante = :id",
                 new MapSqlParameterSource("id", idEstudiante), GenericRowMapper.INSTANCE);
         if (est.isEmpty()) throw ApiException.notFound("Estudiante no encontrado");
 
@@ -61,7 +61,7 @@ public class HistorialService {
                 SELECT hp.id_historial, hp.resultado, hp.promedio_anual, hp.observaciones,
                        hp.fecha_registro, hp.id_grado_origen, hp.id_ano_lectivo,
                        u.username AS registrado_por
-                FROM sga_secretaria.historial_promocion hp
+                FROM sga_principal.historial_promocion hp
                 LEFT JOIN sga_principal.usuarios u ON u.id_usuario = hp.registrado_por
                 WHERE hp.id_estudiante = :id
                 """;
@@ -82,13 +82,13 @@ public class HistorialService {
     public Map<String, Object> registrarPromocion(PromocionRequest dto, String username) {
         List<Map<String, Object>> mat = jdbc.query(
                 "SELECT m.id_matricula, m.id_estudiante, m.id_grado, m.id_ano_lectivo " +
-                        "FROM sga_secretaria.matriculas m WHERE m.id_matricula = :id",
+                        "FROM sga_principal.matriculas m WHERE m.id_matricula = :id",
                 new MapSqlParameterSource("id", dto.id_matricula()), GenericRowMapper.INSTANCE);
         if (mat.isEmpty()) throw ApiException.notFound("Matrícula no encontrada");
         Map<String, Object> m = mat.get(0);
 
         List<Long> dup = jdbc.query(
-                "SELECT id_historial FROM sga_secretaria.historial_promocion WHERE id_matricula = :id",
+                "SELECT id_historial FROM sga_principal.historial_promocion WHERE id_matricula = :id",
                 new MapSqlParameterSource("id", dto.id_matricula()), (rs, n) -> rs.getLong("id_historial"));
         if (!dup.isEmpty()) throw ApiException.conflict("Ya existe registro de promoción para esta matrícula");
 
@@ -104,7 +104,7 @@ public class HistorialService {
         // lamport_ts: orden causal del evento, ver LamportClock e independiente de fecha_registro (reloj de pared).
         long lamportTs = lamportClock.tick();
         jdbc.update("""
-                INSERT INTO sga_secretaria.historial_promocion
+                INSERT INTO sga_principal.historial_promocion
                   (id_matricula, id_estudiante, id_grado_origen, id_ano_lectivo,
                    resultado, promedio_anual, observaciones, registrado_por, lamport_ts)
                 VALUES (:idMatricula, :idEstudiante, :idGrado, :idAno, :resultado, :promedio, :observaciones, :registradoPor, :lamportTs)
@@ -122,7 +122,7 @@ public class HistorialService {
 
         String estadoMatricula = "PROMOVIDO".equals(dto.resultado()) ? "PROMOVIDA" : "NO_PROMOVIDA";
         jdbc.update(
-                "UPDATE sga_secretaria.matriculas SET estado = :estado::sga_principal.estado_matricula_t " +
+                "UPDATE sga_principal.matriculas SET estado = :estado::sga_principal.estado_matricula_t " +
                         "WHERE id_matricula = :id",
                 new MapSqlParameterSource().addValue("estado", estadoMatricula).addValue("id", dto.id_matricula()));
 
@@ -138,7 +138,7 @@ public class HistorialService {
                        COUNT(*) FILTER (WHERE resultado = 'RETIRADO') AS retirados,
                        ROUND(AVG(promedio_anual)::numeric, 2) AS promedio_general,
                        COUNT(id_historial) AS total_registrados
-                FROM sga_secretaria.historial_promocion
+                FROM sga_principal.historial_promocion
                 WHERE id_ano_lectivo = :idAno
                 GROUP BY id_grado_origen
                 """, new MapSqlParameterSource("idAno", idAnoLectivo), GenericRowMapper.INSTANCE);
@@ -171,11 +171,11 @@ public class HistorialService {
                 SELECT m.id_matricula, e.id_estudiante,
                        e.nombres || ' ' || e.apellidos AS estudiante,
                        e.cedula, m.id_grado, m.id_paralelo
-                FROM sga_secretaria.matriculas m
-                JOIN sga_secretaria.estudiantes e ON e.id_estudiante = m.id_estudiante
+                FROM sga_principal.matriculas m
+                JOIN sga_principal.estudiantes e ON e.id_estudiante = m.id_estudiante
                 WHERE m.id_ano_lectivo = :idAno
                   AND NOT EXISTS (
-                    SELECT 1 FROM sga_secretaria.historial_promocion hp
+                    SELECT 1 FROM sga_principal.historial_promocion hp
                     WHERE hp.id_matricula = m.id_matricula
                   )
                 """;
