@@ -1,5 +1,6 @@
 package ec.uteq.sga.secretaria.controller;
 
+import ec.uteq.sga.secretaria.common.ApiException;
 import ec.uteq.sga.secretaria.common.PageResult;
 import ec.uteq.sga.secretaria.dto.CambiarEstadoMatriculaRequest;
 import ec.uteq.sga.secretaria.dto.MatriculaRequest;
@@ -59,7 +60,15 @@ public class MatriculaController {
 
     @PatchMapping("/{id}/estado")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void cambiarEstado(@PathVariable Long id, @Valid @RequestBody CambiarEstadoMatriculaRequest dto) {
+    public void cambiarEstado(@PathVariable Long id, @Valid @RequestBody CambiarEstadoMatriculaRequest dto, AuthenticatedUser user) {
+        requireDirector(user);
         service.cambiarEstado(id, dto.estado());
+    }
+
+    /** Cambiar el estado de una matricula (retirar, promover...) queda reservado a DIRECTOR; SECRETARIA solo crea. */
+    private void requireDirector(AuthenticatedUser user) {
+        if (!user.isDirector()) {
+            throw ApiException.forbidden("Requiere rol DIRECTOR");
+        }
     }
 }

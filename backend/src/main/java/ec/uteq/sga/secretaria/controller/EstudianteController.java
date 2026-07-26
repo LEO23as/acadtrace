@@ -1,5 +1,6 @@
 package ec.uteq.sga.secretaria.controller;
 
+import ec.uteq.sga.secretaria.common.ApiException;
 import ec.uteq.sga.secretaria.common.PageResult;
 import ec.uteq.sga.secretaria.dto.CambiarEstadoRequest;
 import ec.uteq.sga.secretaria.dto.EstudianteRequest;
@@ -47,7 +48,15 @@ public class EstudianteController {
 
     @PatchMapping("/{id}/estado")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void cambiarEstado(@PathVariable Long id, @Valid @RequestBody CambiarEstadoRequest dto) {
+    public void cambiarEstado(@PathVariable Long id, @Valid @RequestBody CambiarEstadoRequest dto, AuthenticatedUser user) {
+        requireDirector(user);
         service.cambiarEstado(id, dto.estado());
+    }
+
+    /** Dar de baja/reactivar un estudiante queda reservado a DIRECTOR; SECRETARIA solo crea y edita. */
+    private void requireDirector(AuthenticatedUser user) {
+        if (!user.isDirector()) {
+            throw ApiException.forbidden("Requiere rol DIRECTOR");
+        }
     }
 }
