@@ -160,8 +160,12 @@ class ActividadServiceServicer(actividades_pb2_grpc.ActividadServiceServicer):
                 mensaje=f"{len(actividades_list)} actividades encontradas",
                 actividades=actividades_list
             )
+        except grpc.RpcError:
+            raise
         except Exception as e:
-            context.abort(grpc.StatusCode.INTERNAL, str(e))
+            import traceback
+            traceback.print_exc()
+            context.abort(grpc.StatusCode.INTERNAL, f"{type(e).__name__}: {e}")
             
     def EliminarActividad(self, request, context):
         try:

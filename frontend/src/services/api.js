@@ -77,6 +77,10 @@ export const getPromedioFormativo = (idMatricula, trimestre) =>
 export const getPromedioFinal = (idMatricula, trimestre) =>
   axios.get(`${API}/rpc/calificaciones/promedio-final/${idMatricula}/${trimestre}`, { headers: authHeaders() });
 
+// Notas ya registradas de una actividad (para precargar la tabla de calificar).
+export const getCalificacionesPorActividad = (idActividad) =>
+  axios.get(`${API_DOCENTE_REST}/calificaciones/`, { params: { id_actividad: idActividad } });
+
 // ─── PERÍODOS DE EVALUACIÓN (aún solo REST en Django) ────────
 // TODO: exponer como endpoint en el gateway Java cuando exista.
 export const getPeriodos = () =>

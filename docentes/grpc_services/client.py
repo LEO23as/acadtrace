@@ -5,6 +5,11 @@ from . import contexto_docente_pb2_grpc
 
 SGA_PRINCIPAL_HOST = os.environ.get("SGA_PRINCIPAL_GRPC_HOST", "localhost:9092")
 
+# El principal exige este token interno en toda llamada gRPC entrante
+# (InternalAuthInterceptor). Debe viajar como metadato en cada request.
+INTERNAL_TOKEN = os.environ.get("GRPC_INTERNAL_TOKEN", "dev-token-123")
+INTERNAL_MD = (("internal_token", INTERNAL_TOKEN),)
+
 def get_context_stub():
     channel = grpc.insecure_channel(SGA_PRINCIPAL_HOST)
     return contexto_docente_pb2_grpc.TeacherContextServiceStub(channel)
@@ -16,7 +21,7 @@ def validate_teacher_assignment(id_docente, id_asignacion):
         id_asignacion=id_asignacion
     )
     try:
-        response = stub.ValidateTeacherAssignment(request)
+        response = stub.ValidateTeacherAssignment(request, metadata=INTERNAL_MD)
         return {
             "is_valid": response.is_valid,
             "id_asignatura": response.id_asignatura,
@@ -36,7 +41,7 @@ def validate_student_enrollment(id_matricula, id_asignacion):
         id_asignacion=id_asignacion
     )
     try:
-        response = stub.ValidateStudentEnrollment(request)
+        response = stub.ValidateStudentEnrollment(request, metadata=INTERNAL_MD)
         return {
             "is_valid": response.is_valid,
             "id_estudiante": response.id_estudiante
@@ -49,7 +54,7 @@ def get_current_academic_year():
     stub = get_context_stub()
     request = contexto_docente_pb2.EmptyRequest()
     try:
-        response = stub.GetCurrentAcademicYear(request)
+        response = stub.GetCurrentAcademicYear(request, metadata=INTERNAL_MD)
         return {
             "id_ano_lectivo": response.id_ano_lectivo,
             "nombre": response.nombre,
@@ -66,7 +71,7 @@ def get_students_by_assignment(id_asignacion):
         id_asignacion=id_asignacion
     )
     try:
-        response = stub.GetStudentsByAssignment(request)
+        response = stub.GetStudentsByAssignment(request, metadata=INTERNAL_MD)
         return [
             {
                 "id_estudiante": student.id_estudiante,

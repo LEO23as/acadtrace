@@ -1,10 +1,19 @@
 import grpc
-from django.db import transaction
+from django.db import transaction, connection
+from django.db.models import Count
 from django.core.exceptions import ObjectDoesNotExist
 from docentes.models import Asistencia, ResumenAsistencia, PeriodoEvaluacion, EstadoAsistencia
 from . import asistencia_pb2
 from . import asistencia_pb2_grpc
 from .client import validate_teacher_assignment, get_students_by_assignment
+
+
+def _usuario_de_persona(id_persona):
+    # registrado_por referencia usuarios(id_usuario); el docente llega como id_persona.
+    with connection.cursor() as cur:
+        cur.execute("SELECT id_usuario FROM sga_principal.personas WHERE id_persona = %s", [id_persona])
+        fila = cur.fetchone()
+    return fila[0] if fila else None
 
 class AsistenciaServiceServicer(asistencia_pb2_grpc.AsistenciaServiceServicer):
     
@@ -68,6 +77,34 @@ class AsistenciaServiceServicer(asistencia_pb2_grpc.AsistenciaServiceServicer):
             resumen.total_atrasos = total_atrasos
             resumen.save()
 
+    def _recalcular_resumen_bulk(self, id_asignacion, periodo, matriculas):
+        # Cuenta por (matrícula, estado) de todo el periodo en UNA consulta.
+        conteos = (
+            Asistencia.objects
+            .filter(id_asignacion=id_asignacion, id_periodo=periodo, id_matricula__in=matriculas)
+            .values("id_matricula", "estado")
+            .annotate(n=Count("id_asistencia"))
+        )
+        acum = {m: {"PRESENTE": 0, "AUSENTE": 0, "JUSTIFICADO": 0, "ATRASO": 0} for m in matriculas}
+        for c in conteos:
+            acum[c["id_matricula"]][c["estado"]] = c["n"]
+
+        ResumenAsistencia.objects.filter(
+            id_asignacion=id_asignacion, id_periodo=periodo, id_matricula__in=matriculas
+        ).delete()
+        ResumenAsistencia.objects.bulk_create([
+            ResumenAsistencia(
+                id_matricula=m,
+                id_asignacion=id_asignacion,
+                id_periodo=periodo,
+                total_presentes=v["PRESENTE"],
+                total_ausentes=v["AUSENTE"],
+                total_justificados=v["JUSTIFICADO"],
+                total_atrasos=v["ATRASO"],
+            )
+            for m, v in acum.items()
+        ])
+
     def RegistrarAsistenciaGrupal(self, request, context):
         try:
             id_docente = self._validate_auth(context, request.id_asignacion)
@@ -80,49 +117,58 @@ class AsistenciaServiceServicer(asistencia_pb2_grpc.AsistenciaServiceServicer):
             # Evitar N+1 y llamadas a gRPC individuales obteniendo los estudiantes válidos
             estudiantes = get_students_by_assignment(request.id_asignacion)
             matriculas_validas = {est['id_matricula'] for est in estudiantes}
-            
-            asistencias_creadas = []
-            
+            estados_validos = {e.value for e in EstadoAsistencia}
+
+            # Validación previa (sin tocar BD).
+            items = list(request.asistencias)
+            for item in items:
+                if item.id_matricula not in matriculas_validas:
+                    context.abort(grpc.StatusCode.INVALID_ARGUMENT, f"Estudiante con matrícula {item.id_matricula} no pertenece a la asignación")
+                if item.estado not in estados_validos:
+                    context.abort(grpc.StatusCode.INVALID_ARGUMENT, f"Estado {item.estado} inválido")
+
+            # El usuario que registra es el mismo para todos: se resuelve una sola vez.
+            usuario_registra = _usuario_de_persona(id_docente)
+            matriculas = [item.id_matricula for item in items]
+
             with transaction.atomic():
-                for item in request.asistencias:
-                    if item.id_matricula not in matriculas_validas:
-                        context.abort(grpc.StatusCode.INVALID_ARGUMENT, f"Estudiante con matrícula {item.id_matricula} no pertenece a la asignación")
-                        
-                    # Validar estados válidos
-                    if item.estado not in [e.value for e in EstadoAsistencia]:
-                        context.abort(grpc.StatusCode.INVALID_ARGUMENT, f"Estado {item.estado} inválido")
-                        
-                    # Política para duplicados: si ya existe para la fecha, ignorar (NO DUPLICAR NI HACER UPSERT SILENCIOSO)
-                    # El requerimiento dice: "Si ya existe asistencia para esa fecha, no dupliques registros. Devuelve conflicto o utiliza actualización explícita según el endpoint."
-                    # Si enviamos grupal y ya hay algunas creadas, mejor devolver conflicto para toda la transacción si intentan sobrescribir, o ignorarlas silenciosamente si es un submit parcial.
-                    # Asumiremos conflicto estricto según la regla solicitada: "Devuelve conflicto"
-                    if Asistencia.objects.filter(id_matricula=item.id_matricula, id_asignacion=request.id_asignacion, fecha=request.fecha).exists():
-                        context.abort(grpc.StatusCode.ALREADY_EXISTS, f"Ya existe asistencia registrada para el estudiante {item.id_matricula} en la fecha {request.fecha}")
-                        
-                    asistencia = Asistencia.objects.create(
+                # Reemplazo del día en bloque: borrar lo previo y crear todo de una
+                # (evita cientos de idas y vueltas a la BD por estudiante).
+                Asistencia.objects.filter(
+                    id_asignacion=request.id_asignacion, id_periodo=periodo,
+                    fecha=request.fecha, id_matricula__in=matriculas,
+                ).delete()
+
+                nuevas = [
+                    Asistencia(
                         id_matricula=item.id_matricula,
                         id_asignacion=request.id_asignacion,
                         id_periodo=periodo,
                         fecha=request.fecha,
                         estado=item.estado,
                         justificacion=item.justificacion,
-                        registrado_por=id_docente
+                        registrado_por=usuario_registra,
                     )
-                    
-                    self._actualizar_resumen(item.id_matricula, request.id_asignacion, periodo)
-                    
-                    asistencias_creadas.append(
-                        asistencia_pb2.AsistenciaDTO(
-                            id_asistencia=asistencia.id_asistencia,
-                            id_matricula=asistencia.id_matricula,
-                            id_asignacion=asistencia.id_asignacion,
-                            id_periodo=asistencia.id_periodo_id,
-                            fecha=str(asistencia.fecha),
-                            estado=asistencia.estado,
-                            justificacion=asistencia.justificacion or ""
-                        )
-                    )
-            
+                    for item in items
+                ]
+                Asistencia.objects.bulk_create(nuevas)
+
+                # Resumen del periodo recalculado con UNA sola consulta agregada.
+                self._recalcular_resumen_bulk(request.id_asignacion, periodo, matriculas)
+
+            asistencias_creadas = [
+                asistencia_pb2.AsistenciaDTO(
+                    id_asistencia=a.id_asistencia,
+                    id_matricula=a.id_matricula,
+                    id_asignacion=a.id_asignacion,
+                    id_periodo=a.id_periodo_id,
+                    fecha=str(a.fecha),
+                    estado=a.estado,
+                    justificacion=a.justificacion or "",
+                )
+                for a in nuevas
+            ]
+
             return asistencia_pb2.AsistenciaListResponse(
                 success=True,
                 message=f"Se registraron {len(asistencias_creadas)} asistencias correctamente.",
