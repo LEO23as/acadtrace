@@ -3,10 +3,14 @@ package ec.uteq.sga.secretaria.grpc;
 import ec.edu.uteq.sga.grpc.principal.AnoLectivoProto;
 import ec.edu.uteq.sga.grpc.principal.AsignaturaProto;
 import ec.edu.uteq.sga.grpc.principal.CambiarEstadoEstudianteRequest;
+import ec.edu.uteq.sga.grpc.principal.CambiarEstadoGradoRequest;
+import ec.edu.uteq.sga.grpc.principal.CambiarEstadoParaleloRequest;
 import ec.edu.uteq.sga.grpc.principal.Empty;
 import ec.edu.uteq.sga.grpc.principal.EstudianteProto;
 import ec.edu.uteq.sga.grpc.principal.GradoProto;
 import ec.edu.uteq.sga.grpc.principal.GuardarEstudianteRequest;
+import ec.edu.uteq.sga.grpc.principal.GuardarGradoRequest;
+import ec.edu.uteq.sga.grpc.principal.GuardarParaleloRequest;
 import ec.edu.uteq.sga.grpc.principal.ListarEstudiantesRequest;
 import ec.edu.uteq.sga.grpc.principal.ListarEstudiantesResponse;
 import ec.edu.uteq.sga.grpc.principal.ListarParalelosRequest;
@@ -88,7 +92,7 @@ public class PrincipalGrpcClient {
         try {
             return autenticado().crearEstudiante(request);
         } catch (StatusRuntimeException e) {
-            throw mapearError(e, "crear");
+            throw mapearError(e, "crear", "el estudiante");
         }
     }
 
@@ -96,7 +100,7 @@ public class PrincipalGrpcClient {
         try {
             return autenticado().actualizarEstudiante(request);
         } catch (StatusRuntimeException e) {
-            throw mapearError(e, "actualizar");
+            throw mapearError(e, "actualizar", "el estudiante");
         }
     }
 
@@ -112,7 +116,7 @@ public class PrincipalGrpcClient {
         try {
             return autenticado().obtenerEstudiante(ObtenerEstudianteRequest.newBuilder().setIdEstudiante(id).build());
         } catch (StatusRuntimeException e) {
-            throw mapearError(e, "obtener");
+            throw mapearError(e, "obtener", "el estudiante");
         }
     }
 
@@ -121,17 +125,60 @@ public class PrincipalGrpcClient {
             autenticado().cambiarEstadoEstudiante(CambiarEstadoEstudianteRequest.newBuilder()
                     .setIdEstudiante(id).setActivo(activo).build());
         } catch (StatusRuntimeException e) {
-            throw mapearError(e, "cambiar el estado de");
+            throw mapearError(e, "cambiar el estado de", "el estudiante");
+        }
+    }
+
+    public GradoProto crearGrado(GuardarGradoRequest request) {
+        try {
+            return autenticado().crearGrado(request);
+        } catch (StatusRuntimeException e) {
+            throw mapearError(e, "crear", "el grado");
+        }
+    }
+
+    public GradoProto actualizarGrado(GuardarGradoRequest request) {
+        try {
+            return autenticado().actualizarGrado(request);
+        } catch (StatusRuntimeException e) {
+            throw mapearError(e, "actualizar", "el grado");
+        }
+    }
+
+    public void cambiarEstadoGrado(long idGrado, boolean activo) {
+        try {
+            autenticado().cambiarEstadoGrado(CambiarEstadoGradoRequest.newBuilder()
+                    .setIdGrado(idGrado).setActivo(activo).build());
+        } catch (StatusRuntimeException e) {
+            throw mapearError(e, "cambiar el estado de", "el grado");
+        }
+    }
+
+    public ParaleloProto crearParalelo(long idGrado, String letra) {
+        try {
+            return autenticado().crearParalelo(GuardarParaleloRequest.newBuilder()
+                    .setIdGrado(idGrado).setLetra(letra).build());
+        } catch (StatusRuntimeException e) {
+            throw mapearError(e, "crear", "el paralelo");
+        }
+    }
+
+    public void cambiarEstadoParalelo(long idParalelo, boolean activo) {
+        try {
+            autenticado().cambiarEstadoParalelo(CambiarEstadoParaleloRequest.newBuilder()
+                    .setIdParalelo(idParalelo).setActivo(activo).build());
+        } catch (StatusRuntimeException e) {
+            throw mapearError(e, "cambiar el estado de", "el paralelo");
         }
     }
 
     /** Traduce el Status gRPC que devuelve sga-principal (ver PrincipalGrpcService.toGrpcStatus) al ApiException equivalente. */
-    private ApiException mapearError(StatusRuntimeException e, String accion) {
+    private ApiException mapearError(StatusRuntimeException e, String accion, String entidad) {
         String detalle = e.getStatus().getDescription() != null ? e.getStatus().getDescription() : e.getStatus().toString();
         Status.Code code = e.getStatus().getCode();
         if (code == Status.Code.ALREADY_EXISTS) return ApiException.conflict(detalle);
         if (code == Status.Code.NOT_FOUND) return ApiException.notFound(detalle);
         if (code == Status.Code.INVALID_ARGUMENT) return ApiException.badRequest(detalle);
-        return ApiException.badGateway("No se pudo " + accion + " el estudiante en sga-principal: " + detalle);
+        return ApiException.badGateway("No se pudo " + accion + " " + entidad + " en sga-principal: " + detalle);
     }
 }

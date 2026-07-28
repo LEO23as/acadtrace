@@ -58,7 +58,7 @@ public class ReportesService {
                 SELECT m.numero_orden, m.fecha_registro, m.estado,
                        e.cedula, e.nombres || ' ' || e.apellidos AS estudiante
                 FROM sga_principal.matriculas m
-                JOIN sga_principal.estudiantes e ON e.id_estudiante = m.id_estudiante
+                JOIN sga_secretaria.estudiantes e ON e.id_estudiante = m.id_estudiante
                 %s
                 ORDER BY e.apellidos
                 """.formatted(where);
@@ -97,7 +97,7 @@ public class ReportesService {
                        COUNT(*) FILTER (WHERE e.genero = 'MASCULINO') AS masculino,
                        COUNT(*) FILTER (WHERE e.genero = 'FEMENINO') AS femenino
                 FROM sga_principal.matriculas m
-                JOIN sga_principal.estudiantes e ON e.id_estudiante = m.id_estudiante
+                JOIN sga_secretaria.estudiantes e ON e.id_estudiante = m.id_estudiante
                 WHERE m.id_ano_lectivo = :idAno
                 """, params, GenericRowMapper.INSTANCE).get(0);
 

@@ -53,7 +53,7 @@ public class HistorialService {
     public Map<String, Object> historialEstudiante(long idEstudiante) {
         List<Map<String, Object>> est = jdbc.query(
                 "SELECT id_estudiante, nombres, apellidos, cedula, codigo_estudiante " +
-                        "FROM sga_principal.estudiantes WHERE id_estudiante = :id",
+                        "FROM sga_secretaria.estudiantes WHERE id_estudiante = :id",
                 new MapSqlParameterSource("id", idEstudiante), GenericRowMapper.INSTANCE);
         if (est.isEmpty()) throw ApiException.notFound("Estudiante no encontrado");
 
@@ -172,7 +172,7 @@ public class HistorialService {
                        e.nombres || ' ' || e.apellidos AS estudiante,
                        e.cedula, m.id_grado, m.id_paralelo
                 FROM sga_principal.matriculas m
-                JOIN sga_principal.estudiantes e ON e.id_estudiante = m.id_estudiante
+                JOIN sga_secretaria.estudiantes e ON e.id_estudiante = m.id_estudiante
                 WHERE m.id_ano_lectivo = :idAno
                   AND NOT EXISTS (
                     SELECT 1 FROM sga_principal.historial_promocion hp

@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
 import Estudiantes from './pages/Estudiantes';
+import Grados from './pages/Grados';
 import Matriculas from './pages/Matriculas';
 import Usuarios from './pages/Usuarios';
 import { Reportes, Historial, CambiarPassword } from './pages/Extras';
@@ -23,6 +24,7 @@ export default function App() {
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
         <Route path="/estudiantes" element={<PrivateRoute><Estudiantes /></PrivateRoute>} />
+        <Route path="/grados" element={<PrivateRoute><Grados /></PrivateRoute>} />
         <Route path="/matriculas" element={<PrivateRoute><Matriculas /></PrivateRoute>} />
         <Route path="/usuarios" element={<PrivateRoute><Usuarios /></PrivateRoute>} />
         <Route path="/historial" element={<PrivateRoute><Historial /></PrivateRoute>} />
