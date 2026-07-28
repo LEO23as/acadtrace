@@ -12,9 +12,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Ficha medica/de emergencia del estudiante (sga_principal.fichas_estudiante,
- * relacion 1 a 1 por id_estudiante; misma tabla que usa sga-principal via
- * JPA, ver nota de dual-writer en RepresentanteService).
+ * Ficha medica/de emergencia del estudiante (sga_secretaria.fichas_estudiante,
+ * relacion 1 a 1 por id_estudiante, con FK hacia sga_secretaria.estudiantes).
  * detalle_enfermedad/medicacion_permanente/
  * alergias/direccion_referencia se cifran con CryptoService por ser datos de
  * salud sensibles de un menor de edad; enfermedad_catastrofica es una bandera
@@ -53,7 +52,7 @@ public class FichaEstudianteService {
 
     public Map<String, Object> obtenerPorEstudiante(long idEstudiante) {
         List<Map<String, Object>> rows = jdbc.query(
-                "SELECT * FROM sga_principal.fichas_estudiante WHERE id_estudiante = :id",
+                "SELECT * FROM sga_secretaria.fichas_estudiante WHERE id_estudiante = :id",
                 new MapSqlParameterSource("id", idEstudiante), GenericRowMapper.INSTANCE);
         if (rows.isEmpty()) throw ApiException.notFound("Este estudiante todavía no tiene ficha registrada");
         return descifrarFila(rows.get(0));
@@ -72,7 +71,7 @@ public class FichaEstudianteService {
                 .addValue("direccionReferencia", crypto.encrypt(blankToNull(dto.direccion_referencia())));
 
         String sql = """
-                INSERT INTO sga_principal.fichas_estudiante
+                INSERT INTO sga_secretaria.fichas_estudiante
                   (id_estudiante, tipo_sangre, enfermedad_catastrofica, detalle_enfermedad,
                    medicacion_permanente, alergias, contacto_emergencia, telefono_emergencia,
                    direccion_referencia, fecha_actualizacion)

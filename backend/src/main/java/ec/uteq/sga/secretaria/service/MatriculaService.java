@@ -48,7 +48,7 @@ public class MatriculaService {
 
         Long total = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM sga_principal.matriculas m " +
-                        "JOIN sga_principal.estudiantes e ON e.id_estudiante = m.id_estudiante " + where,
+                        "JOIN sga_secretaria.estudiantes e ON e.id_estudiante = m.id_estudiante " + where,
                 params, Long.class);
 
         params.addValue("limit", limit).addValue("offset", offset);
@@ -63,7 +63,7 @@ public class MatriculaService {
                        e.nombres || ' ' || e.apellidos AS estudiante,
                        u.username AS registrado_por
                 FROM sga_principal.matriculas m
-                JOIN sga_principal.estudiantes e ON e.id_estudiante = m.id_estudiante
+                JOIN sga_secretaria.estudiantes e ON e.id_estudiante = m.id_estudiante
                 LEFT JOIN sga_principal.usuarios u ON u.id_usuario = m.registrado_por
                 %s
                 ORDER BY m.id_grado, m.id_paralelo, e.apellidos
@@ -140,7 +140,7 @@ public class MatriculaService {
                        e.cedula, e.codigo_estudiante,
                        u.username AS registrado_por
                 FROM sga_principal.matriculas m
-                JOIN sga_principal.estudiantes e ON e.id_estudiante = m.id_estudiante
+                JOIN sga_secretaria.estudiantes e ON e.id_estudiante = m.id_estudiante
                 LEFT JOIN sga_principal.usuarios u ON u.id_usuario = m.registrado_por
                 WHERE m.id_matricula = :id
                 """;
