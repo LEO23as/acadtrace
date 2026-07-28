@@ -42,9 +42,13 @@ public class GenericRowMapper implements RowMapper<Map<String, Object>> {
             case Types.DATE:
                 return rs.getObject(index, LocalDate.class);
             case Types.TIMESTAMP:
-                return rs.getObject(index, LocalDateTime.class);
             case Types.TIMESTAMP_WITH_TIMEZONE:
-                return rs.getObject(index, OffsetDateTime.class);
+                // pgjdbc reporta "timestamptz" como Types.TIMESTAMP (no TIMESTAMP_WITH_TIMEZONE) segun la
+                // version del driver, asi que el codigo JDBC no alcanza para distinguirlo: hay que mirar el
+                // nombre real de tipo de Postgres para no pedirle LocalDateTime a una columna con offset.
+                return "timestamptz".equalsIgnoreCase(meta.getColumnTypeName(index))
+                        ? rs.getObject(index, OffsetDateTime.class)
+                        : rs.getObject(index, LocalDateTime.class);
             case Types.ARRAY:
                 Array array = rs.getArray(index);
                 if (array == null) return null;

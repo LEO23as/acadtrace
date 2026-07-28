@@ -2,13 +2,20 @@ package ec.uteq.sga.secretaria.grpc;
 
 import ec.edu.uteq.sga.grpc.principal.AnoLectivoProto;
 import ec.edu.uteq.sga.grpc.principal.AsignaturaProto;
+import ec.edu.uteq.sga.grpc.principal.CambiarEstadoEstudianteRequest;
 import ec.edu.uteq.sga.grpc.principal.Empty;
+import ec.edu.uteq.sga.grpc.principal.EstudianteProto;
 import ec.edu.uteq.sga.grpc.principal.GradoProto;
+import ec.edu.uteq.sga.grpc.principal.GuardarEstudianteRequest;
+import ec.edu.uteq.sga.grpc.principal.ListarEstudiantesRequest;
+import ec.edu.uteq.sga.grpc.principal.ListarEstudiantesResponse;
 import ec.edu.uteq.sga.grpc.principal.ListarParalelosRequest;
+import ec.edu.uteq.sga.grpc.principal.ObtenerEstudianteRequest;
 import ec.edu.uteq.sga.grpc.principal.ParaleloProto;
 import ec.edu.uteq.sga.grpc.principal.PrincipalServiceGrpc;
 import ec.uteq.sga.secretaria.common.ApiException;
 import io.grpc.Metadata;
+import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.grpc.stub.MetadataUtils;
 import net.devh.boot.grpc.client.inject.GrpcClient;
@@ -75,5 +82,56 @@ public class PrincipalGrpcClient {
         } catch (StatusRuntimeException e) {
             throw ApiException.badGateway("No se pudo consultar asignaturas en sga-principal: " + e.getStatus());
         }
+    }
+
+    public EstudianteProto crearEstudiante(GuardarEstudianteRequest request) {
+        try {
+            return autenticado().crearEstudiante(request);
+        } catch (StatusRuntimeException e) {
+            throw mapearError(e, "crear");
+        }
+    }
+
+    public EstudianteProto actualizarEstudiante(GuardarEstudianteRequest request) {
+        try {
+            return autenticado().actualizarEstudiante(request);
+        } catch (StatusRuntimeException e) {
+            throw mapearError(e, "actualizar");
+        }
+    }
+
+    public ListarEstudiantesResponse listarEstudiantes(ListarEstudiantesRequest request) {
+        try {
+            return autenticado().listarEstudiantes(request);
+        } catch (StatusRuntimeException e) {
+            throw ApiException.badGateway("No se pudo listar estudiantes en sga-principal: " + e.getStatus());
+        }
+    }
+
+    public EstudianteProto obtenerEstudiante(long id) {
+        try {
+            return autenticado().obtenerEstudiante(ObtenerEstudianteRequest.newBuilder().setIdEstudiante(id).build());
+        } catch (StatusRuntimeException e) {
+            throw mapearError(e, "obtener");
+        }
+    }
+
+    public void cambiarEstadoEstudiante(long id, boolean activo) {
+        try {
+            autenticado().cambiarEstadoEstudiante(CambiarEstadoEstudianteRequest.newBuilder()
+                    .setIdEstudiante(id).setActivo(activo).build());
+        } catch (StatusRuntimeException e) {
+            throw mapearError(e, "cambiar el estado de");
+        }
+    }
+
+    /** Traduce el Status gRPC que devuelve sga-principal (ver PrincipalGrpcService.toGrpcStatus) al ApiException equivalente. */
+    private ApiException mapearError(StatusRuntimeException e, String accion) {
+        String detalle = e.getStatus().getDescription() != null ? e.getStatus().getDescription() : e.getStatus().toString();
+        Status.Code code = e.getStatus().getCode();
+        if (code == Status.Code.ALREADY_EXISTS) return ApiException.conflict(detalle);
+        if (code == Status.Code.NOT_FOUND) return ApiException.notFound(detalle);
+        if (code == Status.Code.INVALID_ARGUMENT) return ApiException.badRequest(detalle);
+        return ApiException.badGateway("No se pudo " + accion + " el estudiante en sga-principal: " + detalle);
     }
 }
