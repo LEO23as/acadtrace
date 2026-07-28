@@ -91,6 +91,18 @@
       <version>${pdfbox.version}</version>
     </dependency>
 
+    <!-- Importacion masiva de estudiantes: Excel (.xlsx) y CSV -->
+    <dependency>
+      <groupId>org.apache.poi</groupId>
+      <artifactId>poi-ooxml</artifactId>
+      <version>5.2.5</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-csv</artifactId>
+      <version>1.10.0</version>
+    </dependency>
+
     <!-- Carga el .env de la raiz del repo en desarrollo (auto-integracion Spring Boot 3) -->
     <dependency>
       <groupId>me.paulschwarz</groupId>

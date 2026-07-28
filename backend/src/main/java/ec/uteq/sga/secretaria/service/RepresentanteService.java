@@ -12,12 +12,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * CRUD de representantes sobre sga_principal.representantes. sga-principal
- * tambien tiene su propio RepresentanteController/Service via JPA sobre la
- * misma tabla (dual-writer preexistente, no resuelto aqui: ese repo no se
- * toca). direccion/telefono_principal se cifran igual que en
- * EstudianteService, ya que son datos de contacto de familiares de menores
- * de edad.
+ * CRUD de representantes sobre sga_secretaria.representantes (mismo esquema
+ * propio que Estudiante/Matricula: la FK sga_secretaria.estudiantes.id_representante
+ * apunta a esta tabla, no a sga_principal.representantes). direccion/telefono_principal
+ * se cifran igual que en EstudianteService, ya que son datos de contacto de
+ * familiares de menores de edad.
  */
 @Service
 public class RepresentanteService {
@@ -58,7 +57,7 @@ public class RepresentanteService {
         String sql = """
                 SELECT id_representante, cedula, nombres, apellidos, parentesco,
                        telefono_principal, telefono_alt, correo, direccion
-                FROM sga_principal.representantes
+                FROM sga_secretaria.representantes
                 %s
                 ORDER BY apellidos, nombres
                 """.formatted(whereExtra);
@@ -69,7 +68,7 @@ public class RepresentanteService {
 
     public Map<String, Object> obtenerPorId(long id) {
         List<Map<String, Object>> rows = jdbc.query(
-                "SELECT * FROM sga_principal.representantes WHERE id_representante = :id",
+                "SELECT * FROM sga_secretaria.representantes WHERE id_representante = :id",
                 new MapSqlParameterSource("id", id), GenericRowMapper.INSTANCE);
         if (rows.isEmpty()) throw ApiException.notFound("Representante no encontrado");
         return descifrarFila(rows.get(0));
@@ -79,7 +78,7 @@ public class RepresentanteService {
         String cedula = blankToNull(dto.cedula());
         if (cedula != null) {
             List<Long> dup = jdbc.query(
-                    "SELECT id_representante FROM sga_principal.representantes WHERE cedula = :cedula",
+                    "SELECT id_representante FROM sga_secretaria.representantes WHERE cedula = :cedula",
                     new MapSqlParameterSource("cedula", cedula), (rs, n) -> rs.getLong("id_representante"));
             if (!dup.isEmpty()) throw ApiException.conflict("Ya existe un representante con esa cédula");
         }
@@ -95,7 +94,7 @@ public class RepresentanteService {
                 .addValue("direccion", crypto.encrypt(blankToNull(dto.direccion())));
 
         String sql = """
-                INSERT INTO sga_principal.representantes
+                INSERT INTO sga_secretaria.representantes
                   (cedula, nombres, apellidos, parentesco, telefono_principal, telefono_alt, correo, direccion)
                 VALUES (:cedula, :nombres, :apellidos, :parentesco, :telefonoPrincipal, :telefonoAlt, :correo, :direccion)
                 RETURNING *
@@ -118,7 +117,7 @@ public class RepresentanteService {
                 .addValue("id", id);
 
         String sql = """
-                UPDATE sga_principal.representantes SET
+                UPDATE sga_secretaria.representantes SET
                   cedula              = COALESCE(:cedula, cedula),
                   nombres             = COALESCE(:nombres, nombres),
                   apellidos           = COALESCE(:apellidos, apellidos),

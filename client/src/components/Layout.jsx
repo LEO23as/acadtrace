@@ -6,7 +6,7 @@ import logo from '../assets/logo.png';
 const PRIMARY = '#1e3a8a';
 const PRIMARY_LIGHT = '#2d4a96';
 
-export default function Layout({ children, breadcrumb = ['Inicio'] }) {
+export default function Layout({ children, breadcrumb = ['Inicio'], sidebarTitle, menuItems = [], seccion, onSeccionChange }) {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [anoActual, setAnoActual] = useState(null);
   const navigate = useNavigate();
@@ -79,6 +79,48 @@ export default function Layout({ children, breadcrumb = ['Inicio'] }) {
       </header>
 
       <div className="flex flex-1 overflow-hidden">
+        {/* SIDEBAR (opcional) */}
+        {menuItems.length > 0 && (
+          <aside className="w-56 flex-shrink-0 hidden md:flex flex-col border-r border-slate-200 bg-white overflow-y-auto">
+            <div className="p-3">
+              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                {sidebarTitle && (
+                  <p className="px-4 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-widest text-slate-400">
+                    {sidebarTitle}
+                  </p>
+                )}
+                <nav className="py-1">
+                  {menuItems.map(item => (
+                    <button
+                      key={item.id}
+                      onClick={() => onSeccionChange?.(item.id)}
+                      className={`w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-left transition ${
+                        seccion === item.id
+                          ? 'bg-blue-50 font-medium border-l-[3px]'
+                          : 'border-l-[3px] border-l-transparent text-slate-500 hover:bg-slate-50'
+                      }`}
+                      style={seccion === item.id ? { color: PRIMARY, borderLeftColor: PRIMARY } : {}}
+                    >
+                      {item.icon}
+                      {item.label}
+                    </button>
+                  ))}
+                </nav>
+                <hr className="border-slate-100" />
+                <button
+                  onClick={() => navigate('/dashboard')}
+                  className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-left text-slate-400 hover:bg-slate-50 transition"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                  </svg>
+                  Volver al inicio
+                </button>
+              </div>
+            </div>
+          </aside>
+        )}
+
         {/* MAIN */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Breadcrumb */}

@@ -16,5 +16,13 @@ public record EstudianteRequest(
         Boolean discapacidad,
         String tipo_discapacidad,
         Integer porcentaje_disc,
-        Long id_representante
+        Long id_representante,
+        String nacionalidad,
+        String etnia,
+        String lugar_nacimiento,
+        String vive_con,
+        Integer numeros_hermanos,
+        Boolean beneficio_social,
+        String carnet_conadis,
+        String foto_url
 ) {}
