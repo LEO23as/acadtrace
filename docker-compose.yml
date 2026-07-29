@@ -78,6 +78,9 @@ services:
       - DB_NAME=sga
       - DB_USER=postgres
       - DB_PASSWORD=SgaProvU2026Db
+      - JWT_SECRET=sga-provincias-unidas-secret-key-2026-ecuador-uteq-sistemas
+      - PRINCIPAL_GRPC_HOST=sga-principal
+      - PRINCIPAL_GRPC_PORT=9092
     networks:
       - sga-distribuido-net
 
