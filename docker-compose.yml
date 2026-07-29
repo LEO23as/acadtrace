@@ -55,17 +55,23 @@ services:
       - DB_NAME=sga
       - DB_USER=postgres
       - DB_PASSWORD=SgaProvU2026Db
+      - JWT_SECRET=sga-provincias-unidas-secret-key-2026-ecuador-uteq-sistemas
+      - AES_SECRET_KEY=VFjBtNAup9QAJbbnDGDghPlM6izKw2DbLoSEtYJseF0=
+      - GRPC_PRINCIPAL_HOST=sga-principal
+      - GRPC_PRINCIPAL_PORT=9092
     networks:
       - sga-distribuido-net
+    depends_on:
+      - sga-principal
 
   # ─── 4. MICROSERVICIO SOPORTE ───
   microservicio-soporte:
     build:
-      context: ./microservicio-soporte
-      dockerfile: backend/Dockerfile
+      context: ./microservicio-soporte/backend
+      dockerfile: Dockerfile
     container_name: microservicio-soporte
     ports:
-      - "5177:5177"
+      - "5177:5178"
     environment:
       - DB_HOST=3.23.195.43
       - DB_PORT=5433
