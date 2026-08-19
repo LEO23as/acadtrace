@@ -114,6 +114,8 @@ services:
       - DB_NAME=sga
       - DB_USER=postgres
       - DB_PASSWORD=SgaProvU2026Db
+      - JWT_SECRET=sga-provincias-unidas-secret-key-2026-ecuador-uteq-sistemas
+      - AES_SECRET_KEY=sga-secretaria-aes-256-key-32b!
       - SGA_PRINCIPAL_GRPC_HOST=haproxy
       - SGA_PRINCIPAL_GRPC_PORT=9092
     ports:
@@ -151,6 +153,7 @@ services:
       - DB_NAME=sga
       - DB_USER=postgres
       - DB_PASSWORD=SgaProvU2026Db
+      - JWT_SECRET=sga-provincias-unidas-secret-key-2026-ecuador-uteq-sistemas
       - ETCD_ENDPOINTS=http://etcd:2379
     ports:
       - "8083:8083"
