@@ -86,7 +86,7 @@ public class PrincipalGrpcClient {
     @GrpcClient("principal-service")
     private PrincipalServiceGrpc.PrincipalServiceBlockingStub stub;
 
-    @Value("${app.grpc.internal-token}")
+    @Value("${app.grpc.internal-token:dev-token-123}")
     private String internalToken;
 
     /**
