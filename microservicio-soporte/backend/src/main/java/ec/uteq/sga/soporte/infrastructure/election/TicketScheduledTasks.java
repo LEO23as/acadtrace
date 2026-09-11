@@ -1,4 +1,4 @@
-package ec.uteq.sga.soporte.election;
+package ec.uteq.sga.soporte.infrastructure.election;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

@@ -1,4 +1,4 @@
-package ec.uteq.sga.soporte.election;
+package ec.uteq.sga.soporte.infrastructure.election;
 
 import io.etcd.jetcd.ByteSequence;
 import io.etcd.jetcd.Client;
