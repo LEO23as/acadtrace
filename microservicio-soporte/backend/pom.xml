@@ -209,6 +209,7 @@
 <excludes>
 <exclude>ec/uteq/sga/soporte/grpc/incidencias/**</exclude>
 <exclude>ec/uteq/sga/soporte/grpc/principal/**</exclude>
+<exclude>ec/uteq/sga/soporte/infrastructure/election/**</exclude>
 </excludes>
 <rules>
 <rule>
