@@ -18,7 +18,7 @@ public class JwtService {
 
     private final SecretKey key;
 
-    public JwtService(@Value("${app.jwt.secret:***REMOVED-JWT-SECRET***}") String secret) {
+    public JwtService(@Value("${app.jwt.secret}") String secret) {
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
 
