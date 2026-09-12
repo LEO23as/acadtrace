@@ -7,7 +7,6 @@ export const e2e = {
   password: process.env.E2E_DOCENTE_PASSWORD,
   grado: process.env.E2E_GRADO,
   curso: process.env.E2E_CURSO,
-  actividad: process.env.E2E_ACTIVIDAD,
 };
 
 export const hasLoginConfiguration = Boolean(

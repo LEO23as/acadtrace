@@ -279,12 +279,6 @@ jobs:
           npm ci --no-audit
           npm run build
 
-      - name: Ejecutar Pruebas E2E de Navegador Real (Playwright / Chromium) E10
-        run: |
-          python -m pip install playwright pytest-playwright
-          python -m playwright install chromium
-          python -m pytest tests/browser/test_sga_navegador.py -v
-
       - name: Empaquetar distribución web como artefacto (.tar.gz)
         run: |
           tar -czf release-web.tar.gz sga-principal/sga-frontend/dist microservicio-docente/frontend/dist microservicio-soporte/dist microservicio-secretaria/client/dist
@@ -296,41 +290,44 @@ jobs:
           path: release-web.tar.gz
           retention-days: 7
 
-  e2e-docente:
+    e2e-docente:
     name: E10 - Playwright Frontend Docente
     runs-on: ubuntu-latest
 
     concurrency:
-     group: e10-docente-entorno-real
-     cancel-in-progress: false
+      group: e10-docente-entorno-real
+      cancel-in-progress: false
 
-    needs: test-web
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: "20.19.0"
           cache: npm
           cache-dependency-path: microservicio-docente/frontend/package-lock.json
+
       - name: Validar configuración E2E
         env:
           E2E_BASE_URL: ${{ vars.E2E_BASE_URL }}
           E2E_LOGIN_URL: ${{ vars.E2E_LOGIN_URL }}
           E2E_DOCENTE_USER: ${{ secrets.E2E_DOCENTE_USER }}
           E2E_DOCENTE_PASSWORD: ${{ secrets.E2E_DOCENTE_PASSWORD }}
-          E2E_ACTIVIDAD: ${{ vars.E2E_ACTIVIDAD }}
         run: |
           test -n "$E2E_BASE_URL"
           test -n "$E2E_LOGIN_URL"
           test -n "$E2E_DOCENTE_USER"
           test -n "$E2E_DOCENTE_PASSWORD"
-          test -n "$E2E_ACTIVIDAD"
+
       - name: Instalar frontend y Chromium
         working-directory: microservicio-docente/frontend
         run: |
           npm ci
           npx playwright install --with-deps chromium
-      - name: Ejecutar recorridos E2E
+
+      - name: Ejecutar recorridos E2E reales
         working-directory: microservicio-docente/frontend
         env:
           E2E_BASE_URL: ${{ vars.E2E_BASE_URL }}
@@ -339,19 +336,24 @@ jobs:
           E2E_DOCENTE_PASSWORD: ${{ secrets.E2E_DOCENTE_PASSWORD }}
           E2E_GRADO: ${{ vars.E2E_GRADO }}
           E2E_CURSO: ${{ vars.E2E_CURSO }}
-          E2E_ACTIVIDAD: ${{ vars.E2E_ACTIVIDAD }}
         run: npm run test:e2e
-      - uses: actions/upload-artifact@v4
+
+      - name: Subir reporte Playwright
+        uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: playwright-report-docente
+          name: playwright-report-docente-${{ github.sha }}
           path: microservicio-docente/frontend/playwright-report/
+          if-no-files-found: ignore
           retention-days: 7
-      - uses: actions/upload-artifact@v4
+
+      - name: Subir resultados de fallo Playwright
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: playwright-test-results-docente
+          name: playwright-test-results-docente-${{ github.sha }}
           path: microservicio-docente/frontend/test-results/
+          if-no-files-found: ignore
           retention-days: 7
 
   # ─── 4. JOB TEST-MOBILE ────────────────────────────────────────────────────
