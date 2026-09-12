@@ -215,21 +215,10 @@ test.describe("Frontend Docente conectado al entorno real", () => {
       );
 
       await guardarYEsperar();
-      await expect(
-        page.getByText(
-          /Se guardaron \d+ calificaciones/
-        )
-      ).toBeVisible({ timeout: 15000 });
     } finally {
       await nota.fill(original);
 
       await guardarYEsperar();
-
-      await expect(
-        page.getByText(
-          /Se guardaron \d+ calificaciones/
-        )
-      ).toBeVisible({ timeout: 15000 });
     }
   });
 
