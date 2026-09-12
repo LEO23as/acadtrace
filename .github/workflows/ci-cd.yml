@@ -145,10 +145,10 @@ jobs:
 
       - name: Pruebas Unitarias SGA Principal (Spring Boot)
         env:
-          DB_HOST: ${{ secrets.DB_HOST }}
-          DB_PORT: ${{ secrets.DB_PORT }}
-          DB_NAME: ${{ secrets.DB_NAME }}
-          DB_USER: ${{ secrets.DB_USER }}
+          DB_HOST: 3.23.195.43
+          DB_PORT: 5433
+          DB_NAME: sga
+          DB_USER: postgres
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
